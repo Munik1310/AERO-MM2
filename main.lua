@@ -19,7 +19,7 @@ if not LocalPlayer then
 	error("[AERO] Must run on the client (Players.LocalPlayer is nil)")
 end
 
-local AERO_VERSION = "1.0.0"
+local AERO_VERSION = "1.1.0"
 -- Raw base of the release this file was published with (loader.lua points at the same tag).
 local AERO_BASE_URL = "https://raw.githubusercontent.com/Munik1310/AERO-MM2/v" .. AERO_VERSION
 local MM2_PLACE_ID = 142823291
@@ -272,6 +272,21 @@ local STRINGS = {
 		sec_session = "// Session",
 		reset = "Reset all settings", unload = "Unload AERO",
 		lang_reload = "Language changed · reloading", lang_restart = "Language saved · run the script again",
+		tab_farm = "Farm", meta_farm = "Coins · gun · utility",
+		sec_farm = "// Coin farm",
+		farm = "Auto farm coins", farm_d = "Collects coins until the bag is full",
+		farm_mode = "Movement", mode_tween = "Glide", mode_tp = "Teleport",
+		farm_speed = "Glide speed", farm_delay = "Pause on coin",
+		avoid = "Avoid murderer", avoid_d = "Skips coins near the murderer", avoid_radius = "Avoid radius",
+		on_full = "When the bag is full", full_stop = "Stay", full_lobby = "Go to lobby", full_saved = "Go to saved position",
+		farm_status = "Farm: %s · coins %s · +%d this round",
+		fs_off = "off", fs_paused = "paused", fs_no_map = "no map", fs_waiting_for_round = "waiting for round",
+		fs_dead = "dead", fs_not_on_map = "not on map", fs_bag_full = "bag full", fs_farming = "farming", fs_no_coins = "no coins",
+		sec_gun = "// Gun",
+		grab = "Auto grab gun", grab_d = "Picks up the dropped gun (not as murderer)", grab_return = "Return after grab",
+		sec_util = "// Utility",
+		antiafk = "Anti-AFK", antiafk_d = "Prevents the idle kick",
+		alert = "Murderer alert", alert_d = "Log warning when the murderer is close", alert_radius = "Alert radius",
 	},
 	ru = {
 		tab_overview = "Обзор", tab_visuals = "Визуал", tab_movement = "Движение",
@@ -327,6 +342,21 @@ local STRINGS = {
 		sec_session = "// Сессия",
 		reset = "Сбросить настройки", unload = "Выгрузить AERO",
 		lang_reload = "Язык изменён · перезапуск", lang_restart = "Язык сохранён · запусти скрипт заново",
+		tab_farm = "Фарм", meta_farm = "Монеты · пистолет · утилиты",
+		sec_farm = "// Фарм монет",
+		farm = "Автофарм монет", farm_d = "Собирает монеты, пока сумка не заполнится",
+		farm_mode = "Перемещение", mode_tween = "Плавно", mode_tp = "Телепорт",
+		farm_speed = "Скорость полёта", farm_delay = "Пауза на монете",
+		avoid = "Избегать убийцу", avoid_d = "Пропускает монеты рядом с убийцей", avoid_radius = "Радиус избегания",
+		on_full = "Когда сумка полна", full_stop = "Остаться", full_lobby = "В лобби", full_saved = "На сохранённую позицию",
+		farm_status = "Фарм: %s · монет %s · +%d за раунд",
+		fs_off = "выкл", fs_paused = "пауза", fs_no_map = "нет карты", fs_waiting_for_round = "ждёт раунд",
+		fs_dead = "мёртв", fs_not_on_map = "не на карте", fs_bag_full = "сумка полна", fs_farming = "собирает", fs_no_coins = "нет монет",
+		sec_gun = "// Пистолет",
+		grab = "Автоподбор пистолета", grab_d = "Подбирает выпавший пистолет (не за убийцу)", grab_return = "Вернуться после подбора",
+		sec_util = "// Утилиты",
+		antiafk = "Анти-AFK", antiafk_d = "Не даёт кикнуть за бездействие",
+		alert = "Предупреждение об убийце", alert_d = "Пишет в лог, когда убийца рядом", alert_radius = "Радиус предупреждения",
 	},
 }
 
@@ -369,16 +399,21 @@ Library.LogToConsole = Persist.Values.console == true
 
 -- Tab banner photos: rbxassetid, a workspace path, or a direct PNG/JPEG URL
 -- (loaded through Library:LoadImage → HttpGet → writefile → getcustomasset). nil = no photo.
--- Photos: Unsplash, free under the Unsplash License (https://unsplash.com/license); credits in README.
+-- Banners: AERO-graded copies in the repo (assets/banners, same release tag), the original
+-- Unsplash photo as fallback. Photos are free under the Unsplash License; credits in README.
 local function unsplash(id)
 	return "https://images.unsplash.com/photo-" .. id .. "?fm=jpg&q=70&w=1200&h=220&fit=crop&crop=entropy"
 end
+local function banner(name, unsplashId)
+	return { AERO_BASE_URL .. "/assets/banners/" .. name .. ".jpg", unsplash(unsplashId) }
+end
 local BANNERS = {
-	Overview = unsplash("1611125161572-7dcd6b336a3f"), -- Tokyo at night, Laurentiu Morariu
-	Visuals = unsplash("1501397605259-3ba06b1c69ad"), -- Dana Point at night (unsplash.com/photos/F9BEO9-4Kuo)
-	Movement = unsplash("1557728834-7fa63a44489a"), -- Moscow at night, Olga Guryanova
-	Teleport = unsplash("1443175679639-685643a7fd62"), -- city lights (unsplash.com/photos/qQwxU7NJWTI)
-	Settings = unsplash("1451988336904-b1a6e8846746"), -- map on wood, Ioann-Mark Kuznietsov
+	Overview = banner("overview", "1611125161572-7dcd6b336a3f"), -- Tokyo at night, Laurentiu Morariu
+	Visuals = banner("visuals", "1501397605259-3ba06b1c69ad"), -- Dana Point at night (unsplash.com/photos/F9BEO9-4Kuo)
+	Farm = banner("farm", "1557728834-7fa63a44489a"), -- Moscow at night (mirrored), Olga Guryanova
+	Movement = banner("movement", "1557728834-7fa63a44489a"), -- Moscow at night, Olga Guryanova
+	Teleport = banner("teleport", "1443175679639-685643a7fd62"), -- city lights (unsplash.com/photos/qQwxU7NJWTI)
+	Settings = banner("settings", "1451988336904-b1a6e8846746"), -- map on wood, Ioann-Mark Kuznietsov
 }
 
 local ACCENTS = {
@@ -998,6 +1033,20 @@ local State = {
 	SelectedPlayer = nil,
 	SelectedPoint = nil,
 	SavedCFrame = nil,
+
+	-- Automation (uncalibrated defaults)
+	AutoFarm = false,
+	FarmMode = "tween", -- "tween" | "teleport"
+	FarmSpeed = 24, -- studs per second in tween mode
+	FarmDelay = 0.4, -- seconds standing on each coin
+	AvoidMurderer = true,
+	AvoidRadius = 30,
+	FarmOnFull = "stop", -- "stop" | "lobby" | "saved"
+	AutoGrabGun = false,
+	GrabReturn = true,
+	AntiAFK = false,
+	MurdererAlert = false,
+	AlertRadius = 35,
 }
 
 local ROLE_COLORS = {
@@ -1863,10 +1912,300 @@ end
 -- UI: Overview
 --------------------------------------------------------------------------
 
+--------------------------------------------------------------------------
+-- Automation: coin farm, auto gun grab, anti-AFK, murderer alert
+-- Uses measured data only: CoinContainer.Coin_Server, player-data Coins,
+-- CoinsStarted CollectionLimit, GunDrop, Role. Speeds/delays are uncalibrated defaults.
+--------------------------------------------------------------------------
+
+local Farm = {
+	Thread = nil,
+	Moving = false, -- read by the noclip Stepped handler
+	Paused = false, -- set while the gun grab owns the character
+	Skip = setmetatable({}, { __mode = "k" }), -- [coin] = os.clock() until which it is skipped
+	Status = "off",
+	FullHandled = false,
+	Collected = 0,
+}
+
+local FARM_MODES = { Tween = "tween", Teleport = "teleport" }
+local FULL_ACTIONS = { "stop", "lobby", "saved" }
+
+local function myCoinState()
+	local entry = roleDataFresh() and RoleData.ByPlayer[LocalPlayer] or nil
+	return entry and entry.Coins, RoundInfo.CoinLimit
+end
+
+local function murdererRoot()
+	local murderer = findPlayerByRole("Murderer")
+	if not murderer or murderer == LocalPlayer or not isAlive(murderer) or isDeadInData(murderer) then
+		return nil
+	end
+	return getRoot(murderer)
+end
+
+-- Returns ok, reason. Reason is shown in the Farm status line.
+local function farmCanRun()
+	if Unloaded or not State.AutoFarm then
+		return false, "off"
+	end
+	if Farm.Paused then
+		return false, "paused"
+	end
+	local map = MapCache.Instance
+	if not map then
+		return false, "no map"
+	end
+	if not RoundInfo.Active then
+		return false, "waiting for round"
+	end
+	if not isAlive(LocalPlayer) or isDeadInData(LocalPlayer) then
+		return false, "dead"
+	end
+	local root = getRoot()
+	if not root or not isInsideMap(root.Position) then
+		return false, "not on map"
+	end
+	local coins, limit = myCoinState()
+	if coins and limit and coins >= limit then
+		return false, "bag full"
+	end
+	return true, "farming"
+end
+
+local function pickCoin()
+	local map = MapCache.Instance
+	local root = getRoot()
+	if not map or not root then
+		return nil
+	end
+	local danger = State.AvoidMurderer and murdererRoot() or nil
+	local now = os.clock()
+	local best, bestDistance = nil, math.huge
+	for _, coin in ipairs(getCoins(map)) do
+		local skipUntil = Farm.Skip[coin]
+		if not skipUntil or skipUntil < now then
+			local safe = not danger or (coin.Position - danger.Position).Magnitude > State.AvoidRadius
+			if safe then
+				local d = (coin.Position - root.Position).Magnitude
+				if d < bestDistance then
+					best, bestDistance = coin, d
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Moves the root to `coin`; false when interrupted (coin gone, farm stopped, murderer close).
+local function moveToCoin(coin)
+	local target = coin.Position
+	if not finiteVector(target) then
+		return false
+	end
+	if State.FarmMode == "teleport" then
+		local root = getRoot()
+		if not root then
+			return false
+		end
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.CFrame = CFrame.new(target) * (root.CFrame - root.CFrame.Position)
+		return true
+	end
+
+	local deadline = os.clock() + 15
+	Farm.Moving = true
+	while os.clock() < deadline do
+		if not farmCanRun() or not coin.Parent then
+			Farm.Moving = false
+			return false
+		end
+		local root = getRoot()
+		if not root then
+			Farm.Moving = false
+			return false
+		end
+		if State.AvoidMurderer then
+			local danger = murdererRoot()
+			if danger and (danger.Position - root.Position).Magnitude < State.AvoidRadius then
+				Farm.Skip[coin] = os.clock() + 4
+				Farm.Moving = false
+				return false
+			end
+		end
+		local delta = target - root.Position
+		local distance = delta.Magnitude
+		if distance < 1 then
+			break
+		end
+		local dt = RunService.Heartbeat:Wait()
+		local step = math.min(distance, State.FarmSpeed * math.min(dt, 0.1))
+		root.CFrame = CFrame.new(root.Position + delta.Unit * step) * (root.CFrame - root.CFrame.Position)
+		root.AssemblyLinearVelocity = Vector3.zero
+	end
+	Farm.Moving = false
+	return os.clock() < deadline
+end
+
+local function handleBagFull()
+	if Farm.FullHandled then
+		return
+	end
+	Farm.FullHandled = true
+	local coins, limit = myCoinState()
+	okLog(string.format("Farm: bag <b>full</b> (%s/%s)", tostring(coins), tostring(limit)))
+	if State.FarmOnFull == "lobby" then
+		local points = getSpawnPoints(resolvePath(GameConfig.LobbySpawnsPath), "Lobby")
+		if #points > 0 then
+			teleportPosition(points[math.random(1, #points)].Position, "lobby")
+		end
+	elseif State.FarmOnFull == "saved" and State.SavedCFrame then
+		teleportCFrame(State.SavedCFrame, "saved position")
+	end
+end
+
+local function farmLoop()
+	while not Unloaded and State.AutoFarm do
+		local ok, reason = farmCanRun()
+		Farm.Status = reason
+		if ok then
+			local coin = pickCoin()
+			if coin then
+				local before = myCoinState()
+				local arrived = moveToCoin(coin)
+				if arrived then
+					task.wait(math.max(0.05, State.FarmDelay))
+					local after = myCoinState()
+					if before and after and after > before then
+						Farm.Collected += after - before
+					elseif coin.Parent then
+						-- still there after touching it: not collectable for us, skip for this round
+						Farm.Skip[coin] = math.huge
+					end
+				end
+			else
+				Farm.Status = "no coins"
+				task.wait(0.5)
+			end
+		else
+			if reason == "bag full" then
+				handleBagFull()
+			end
+			task.wait(0.5)
+		end
+	end
+	Farm.Moving = false
+	Farm.Status = "off"
+	if not State.Noclip then
+		restoreNoclip()
+	end
+end
+
+local function setAutoFarm(on)
+	State.AutoFarm = on
+	if on and not Farm.Thread then
+		Farm.Thread = task.spawn(function()
+			local ok, err = pcall(farmLoop)
+			Farm.Thread = nil
+			Farm.Moving = false
+			if not ok then
+				warnLog("Farm error: " .. esc(err))
+			end
+		end)
+	end
+end
+
+-- Auto gun grab -----------------------------------------------------------
+
+local GunGrab = { Busy = false, LastAttempt = 0 }
+
+local function tryGrabGun()
+	if GunGrab.Busy or os.clock() - GunGrab.LastAttempt < 2 then
+		return
+	end
+	if not RoundInfo.Active or not isAlive(LocalPlayer) or isDeadInData(LocalPlayer) then
+		return
+	end
+	local myClass = getRoleInfo(LocalPlayer)
+	if myClass == "Murderer" or myClass == "Sheriff" then
+		return
+	end
+	local gun = findDroppedGun()
+	local position = gun and instancePosition(gun)
+	local root = getRoot()
+	if not finiteVector(position) or not root then
+		return
+	end
+	GunGrab.Busy, GunGrab.LastAttempt = true, os.clock()
+	Farm.Paused = true
+	local back = root.CFrame
+	task.spawn(function()
+		local okMove = pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.CFrame = CFrame.new(position)
+		end)
+		task.wait(0.4)
+		local got = hasTool(LocalPlayer, GameConfig.SheriffToolName)
+		if okMove and State.GrabReturn and root.Parent then
+			pcall(function()
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.CFrame = back
+			end)
+		end
+		if got then
+			okLog("Gun <b>grabbed</b>")
+		else
+			warnLog("Gun grab: <b>no gun after touch</b> · retrying in 2 s")
+		end
+		Farm.Paused = false
+		GunGrab.Busy = false
+	end)
+end
+
+-- Murderer alert ----------------------------------------------------------
+
+local Alert = { Near = false }
+
+local function checkMurdererAlert()
+	if not State.MurdererAlert or not RoundInfo.Active then
+		Alert.Near = false
+		return
+	end
+	local danger = murdererRoot()
+	local root = getRoot()
+	if not danger or not root then
+		Alert.Near = false
+		return
+	end
+	local distance = (danger.Position - root.Position).Magnitude
+	local near = distance <= State.AlertRadius
+	if near and not Alert.Near then
+		warnLog(string.format('<font color="#FF4050">Murderer close</font> · <b>%dst</b>', math.floor(distance + 0.5)))
+	end
+	-- hysteresis: re-arm only after moving clearly away
+	Alert.Near = near or (Alert.Near and distance <= State.AlertRadius * 1.3)
+end
+
+-- Anti-AFK ----------------------------------------------------------------
+
+track(LocalPlayer.Idled:Connect(function()
+	if not State.AntiAFK then
+		return
+	end
+	pcall(function()
+		local virtualUser = game:GetService("VirtualUser")
+		virtualUser:CaptureController()
+		virtualUser:ClickButton2(Vector2.new())
+	end)
+end))
+
+local updateFarmStatus -- assigned in the Farm tab
+
 -- Tab factory: v2 tabs get a banner photo and a meta line; v1 falls back to plain tabs.
 local TAB_META = {
 	Overview = T("st_lobby"),
 	Visuals = T("meta_visuals"),
+	Farm = T("meta_farm"),
 	Movement = T("meta_movement"),
 	Teleport = T("meta_teleport"),
 	Settings = "AERO " .. AERO_VERSION .. " · DebugKit " .. tostring(Library.Version),
@@ -1881,7 +2220,8 @@ local function makeTab(key)
 	local source = BANNERS[key]
 	if source then
 		task.spawn(function()
-			local image, err = Library:LoadImage(source, "aero_" .. string.lower(key) .. ".jpg")
+			-- versioned cache name: a new release re-downloads its own banners
+			local image, err = Library:LoadImage(source, string.format("aero_%s_%s.jpg", AERO_VERSION, string.lower(key)))
 			if Unloaded then
 				return
 			end
@@ -2223,6 +2563,87 @@ persist("gun_esp", Visuals:CreateToggle(T("gun_esp"), false, saved("gun_esp", fu
 		clearGunEsp()
 	end
 end), T("gun_esp_d")))
+
+--------------------------------------------------------------------------
+-- UI: Farm
+--------------------------------------------------------------------------
+
+local FarmTab = makeTab("Farm")
+
+-- Status line: a label on v2, a section line on v1.
+local farmStatusSet
+if HasV2 then
+	local statusLabel = FarmTab:CreateLabel("", { Mono = true })
+	farmStatusSet = function(text)
+		statusLabel:Set(text)
+	end
+else
+	local line = FarmTab:CreateSection("// --")
+	farmStatusSet = function(text)
+		line.Text = string.upper("// " .. text)
+	end
+end
+
+updateFarmStatus = function()
+	local coins, limit = myCoinState()
+	local coinText = coins and (tostring(coins) .. (limit and ("/" .. limit) or "")) or "—"
+	local reasonKey = "fs_" .. string.gsub(Farm.Status, " ", "_")
+	farmStatusSet(T("farm_status", T(reasonKey), coinText, Farm.Collected))
+end
+
+FarmTab:CreateSection(T("sec_farm"))
+persist("farm", FarmTab:CreateToggle(T("farm"), false, saved("farm", function(on)
+	setAutoFarm(on)
+end), T("farm_d")))
+
+-- Localised option labels ↔ stored identifiers
+local MODE_LABELS = { [T("mode_tween")] = "tween", [T("mode_tp")] = "teleport" }
+persist("farm_mode", FarmTab:CreateDropdown(T("farm_mode"), { T("mode_tween"), T("mode_tp") }, saved("farm_mode", function(label)
+	State.FarmMode = MODE_LABELS[label] or "tween"
+end), T("mode_tween")))
+
+persist("farm_speed", FarmTab:CreateSlider(T("farm_speed"), 10, 60, 24, saved("farm_speed", function(value)
+	State.FarmSpeed = value
+end), { Increment = 1, Suffix = " st/s" }))
+
+persist("farm_delay", FarmTab:CreateSlider(T("farm_delay"), 0, 2, 0.4, saved("farm_delay", function(value)
+	State.FarmDelay = value
+end), { Increment = 0.1, Decimals = 1, Suffix = " s" }))
+
+persist("avoid", FarmTab:CreateToggle(T("avoid"), true, saved("avoid", function(on)
+	State.AvoidMurderer = on
+end), T("avoid_d")))
+
+persist("avoid_radius", FarmTab:CreateSlider(T("avoid_radius"), 10, 80, 30, saved("avoid_radius", function(value)
+	State.AvoidRadius = value
+end), { Increment = 5, Suffix = " st" }))
+
+local FULL_LABELS = { [T("full_stop")] = "stop", [T("full_lobby")] = "lobby", [T("full_saved")] = "saved" }
+persist("on_full", FarmTab:CreateDropdown(T("on_full"), { T("full_stop"), T("full_lobby"), T("full_saved") }, saved("on_full", function(label)
+	State.FarmOnFull = FULL_LABELS[label] or "stop"
+end), T("full_stop")))
+
+FarmTab:CreateSection(T("sec_gun"))
+persist("grab", FarmTab:CreateToggle(T("grab"), false, saved("grab", function(on)
+	State.AutoGrabGun = on
+end), T("grab_d")))
+
+persist("grab_return", FarmTab:CreateToggle(T("grab_return"), true, saved("grab_return", function(on)
+	State.GrabReturn = on
+end)))
+
+FarmTab:CreateSection(T("sec_util"))
+persist("antiafk", FarmTab:CreateToggle(T("antiafk"), false, saved("antiafk", function(on)
+	State.AntiAFK = on
+end), T("antiafk_d")))
+
+persist("alert", FarmTab:CreateToggle(T("alert"), false, saved("alert", function(on)
+	State.MurdererAlert = on
+end), T("alert_d")))
+
+persist("alert_radius", FarmTab:CreateSlider(T("alert_radius"), 10, 100, 35, saved("alert_radius", function(value)
+	State.AlertRadius = value
+end), { Increment = 5, Suffix = " st" }))
 
 --------------------------------------------------------------------------
 -- UI: Movement
@@ -2597,6 +3018,9 @@ end)
 -- arg1 = round length in seconds (180), arg2 = player-data table
 listen("RoundStart", function(length, data)
 	RoundInfo.Active = true
+	table.clear(Farm.Skip)
+	Farm.FullHandled = false
+	Farm.Collected = 0
 	if type(length) == "number" and length > 0 and length < 3600 then
 		RoundInfo.Length, RoundInfo.StartedAt = length, os.clock()
 	end
@@ -2666,11 +3090,18 @@ track(RunService.Heartbeat:Connect(function(dt)
 	if espAccum >= 0.2 then
 		espAccum = 0
 		safe("ESP", updateEsp)
+		if State.AutoGrabGun then
+			safe("Gun grab", tryGrabGun)
+		end
 	end
 	statusAccum += dt
 	if statusAccum >= 1 then
 		statusAccum = 0
 		safe("Status", updateStatus)
+		safe("Alert", checkMurdererAlert)
+		if updateFarmStatus then
+			safe("Farm status", updateFarmStatus)
+		end
 	end
 	roleAccum += dt
 	if roleAccum >= GameConfig.RoleData.PollInterval then
@@ -2685,7 +3116,7 @@ track(RunService.Heartbeat:Connect(function(dt)
 end))
 
 track(RunService.Stepped:Connect(function()
-	if not State.Noclip then
+	if not State.Noclip and not Farm.Moving then
 		return
 	end
 	local character = getCharacter()
@@ -2740,6 +3171,8 @@ unload = function()
 		return
 	end
 	pcall(Collector.Stop, true)
+	State.AutoFarm, State.AutoGrabGun, State.AntiAFK, State.MurdererAlert = false, false, false, false
+	Farm.Moving = false
 	pcall(setSpeedEnabled, false)
 	pcall(setJumpEnabled, false)
 	pcall(setFovEnabled, false)

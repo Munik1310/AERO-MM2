@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 — 2026-11-25
+
+**Farm tab (new)**
+- Coin auto farm: glide (adjustable speed) or teleport, pause per coin, skips coins near the murderer,
+  stops when the bag is full (coin limit from the round) and can go to the lobby or a saved position
+- Auto grab gun: picks up GunDrop and returns to where you were (not as murderer)
+- Anti-AFK, murderer proximity alert
+
+**Banners**
+- Tab photos are AERO-graded copies hosted in this repo (`assets/banners`); Unsplash originals are the fallback
+- Cached per release, so a new version downloads its own images
+
+**UI (DebugKit 2.2)**
+- `Library:LoadImage` accepts a list of sources and uses the first one that works
+
 ## 1.0.0 — 2026-11-25
 
 First public release. Tested on MM2 build 1467 with Xeno v1.3.65 (PC).

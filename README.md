@@ -14,6 +14,7 @@ Run it in your executor while in MM2. The loader only starts in MM2 (PlaceId `14
 | --- | --- |
 | Overview | Map, round timer, your role and coins, murderer, gun holder (Sheriff/Hero), dropped gun; quick teleports |
 | Visuals | Player highlight in role colors, name tags, distance; coin, body and dropped-gun markers |
+| Farm | Coin auto farm (glide or teleport, avoids the murderer, stops when the bag is full), auto grab gun, anti-AFK, murderer alert |
 | Movement | Walk speed, jump power, infinite jump, noclip, FOV, camera zoom, third person |
 | Teleport | Teleport to players, spectate, lobby and map spawns, save/return position |
 | Settings | Language (English/Русский), accent color, toggle key, UI scale, diagnostics |
@@ -48,7 +49,7 @@ If the game changes, AERO shows a warning on start. To help fix it: **Settings �
 ## Credits
 
 - UI: [DebugKit](https://github.com/Munik1310/DebugKit) v2
-- Banner photos from [Unsplash](https://unsplash.com/license), free under the Unsplash License: [Laurentiu Morariu](https://unsplash.com/photos/0xpS2jc784M), [F9BEO9-4Kuo](https://unsplash.com/photos/F9BEO9-4Kuo), [Olga Guryanova](https://unsplash.com/photos/x1xg7wtIAvU), [qQwxU7NJWTI](https://unsplash.com/photos/qQwxU7NJWTI), [Ioann-Mark Kuznietsov](https://unsplash.com/photos/gtCWBwbZNpM)
+- Banner photos from [Unsplash](https://unsplash.com/license), free under the Unsplash License (AERO-graded copies in `assets/banners`): [Laurentiu Morariu](https://unsplash.com/photos/0xpS2jc784M), [F9BEO9-4Kuo](https://unsplash.com/photos/F9BEO9-4Kuo), [Olga Guryanova](https://unsplash.com/photos/x1xg7wtIAvU), [qQwxU7NJWTI](https://unsplash.com/photos/qQwxU7NJWTI), [Ioann-Mark Kuznietsov](https://unsplash.com/photos/gtCWBwbZNpM)
 
 Use at your own risk.
 
@@ -70,6 +71,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Munik1310/AERO-MM2/ma
 | --- | --- |
 | Обзор | Карта, таймер раунда, твоя роль и монеты, убийца, у кого пистолет (шериф/герой), пистолет на земле; быстрые телепорты |
 | Визуал | Подсветка игроков цветом роли, подписи, расстояние; метки монет, тел и выпавшего пистолета |
+| Фарм | Автофарм монет (плавно или телепортом, обходит убийцу, останавливается при полной сумке), автоподбор пистолета, анти-AFK, предупреждение об убийце |
 | Движение | Скорость, сила прыжка, бесконечный прыжок, noclip, FOV, отдаление камеры, вид от третьего лица |
 | Телепорт | К игрокам, наблюдение, точки спавна в лобби и на карте, сохранение позиции |
 | Настройки | Язык (English/Русский), цвет акцента, клавиша окна, масштаб, диагностика |
@@ -104,6 +106,6 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Munik1310/AERO-MM2/ma
 ### Авторы
 
 - Интерфейс: [DebugKit](https://github.com/Munik1310/DebugKit) v2
-- Фото в шапках — [Unsplash](https://unsplash.com/license), бесплатная лицензия Unsplash (ссылки на авторов выше).
+- Фото в шапках — [Unsplash](https://unsplash.com/license), бесплатная лицензия Unsplash (ссылки на авторов выше); обработанные копии в `assets/banners`.
 
 Используешь на свой риск.

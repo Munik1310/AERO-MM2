@@ -12,6 +12,7 @@
 			Options = { Subtitle, Size = Vector2, Accent = Color3, Keybind = Enum.KeyCode }
 		Library:LoadImage(source [, cacheName])                -> imageId | nil, err
 			source = "rbxassetid://…" | local workspace path | "https://…" (HttpGet → writefile → getcustomasset)
+			         | { source1, source2, … } — tried in order, first that works wins
 		Library.Strings                                        -- built-in UI text, override for localisation
 
 		Window:CreateTab(Name [, IconImage] [, TabOptions])    -> Tab
@@ -39,7 +40,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local Library = {}
-Library.Version = "2.1.0"
+Library.Version = "2.2.0"
 Library.LogToConsole = true
 
 -- Built-in UI strings; override (e.g. for localisation) before creating the window.
@@ -304,6 +305,18 @@ local function looksLikeImage(bytes)
 end
 
 function Library:LoadImage(source, cacheName)
+	if type(source) == "table" then
+		local errors = {}
+		for index, candidate in ipairs(source) do
+			local name = cacheName and (index == 1 and cacheName or (index .. "_" .. cacheName)) or nil
+			local image, err = self:LoadImage(candidate, name)
+			if image then
+				return image
+			end
+			table.insert(errors, tostring(err))
+		end
+		return nil, #errors > 0 and table.concat(errors, " | ") or "no sources"
+	end
 	if type(source) ~= "string" or source == "" then
 		return nil, "no source"
 	end
