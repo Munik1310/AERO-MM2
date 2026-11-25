@@ -12,11 +12,16 @@
 - Settings → Custom images: put any PNG/JPEG on all tabs, one tab or the window background
   (URL, Roblox asset id, or a file in your workspace); saved with your settings
 - Or drop files into `workspace/AERO/images` (`overview.png`, `farm.jpg`, `background.png`, …)
+- **Reset all** clears every custom picture at once
 - Default tab photos are AERO-graded copies hosted in this repo (`assets/banners`), Unsplash originals as fallback
 
 **Top bar**
 - Draggable info bar in the same style: FPS, ping, time, map, round time left, your role
 - Optional event feed under it (log lines that fade out); center/left/right position
+
+**Fixes**
+- Top bar no longer shakes while dragging; its dragged position is saved
+- Dropdown choices are saved language-neutral, so switching EN/RU keeps them
 
 **UI (DebugKit 2.2)**
 - New: `Tab:CreateInput`, `Window:SetBackground`, `Window:CreateWatermark`, `Window.Fps`

@@ -204,6 +204,26 @@ local function persist(key, element)
 	return element
 end
 
+-- Dropdowns with translated labels: store a language-neutral id instead of the label.
+local function savedChoice(key, idByLabel, fn)
+	return function(labelText)
+		Persist.Values[key] = idByLabel[labelText] or labelText
+		persistSaveSoon()
+		if fn then
+			return fn(labelText)
+		end
+	end
+end
+
+local function persistChoice(key, element, idByLabel)
+	local labelById = {}
+	for labelText, id in pairs(idByLabel) do
+		labelById[id] = labelText
+	end
+	element._labelById = labelById
+	return persist(key, element)
+end
+
 --------------------------------------------------------------------------
 -- Localisation (UI text; log lines stay English)
 --------------------------------------------------------------------------
@@ -292,7 +312,7 @@ local STRINGS = {
 		align_center = "Center", align_left = "Left", align_right = "Right",
 		sec_images = "// Custom images", img_target = "Where", img_all = "All tabs", img_background = "Window background",
 		img_source = "Image", img_placeholder = "URL, asset id or file in workspace",
-		img_apply = "Apply", img_reset = "Reset", bg_opacity = "Background opacity",
+		img_apply = "Apply", img_reset = "Reset", img_reset_all = "Reset all", bg_opacity = "Background opacity",
 		img_hint = "Or put files into workspace/AERO/images: overview.png, visuals.jpg, farm.png, movement.png, teleport.png, settings.png, background.png",
 	},
 	ru = {
@@ -369,7 +389,7 @@ local STRINGS = {
 		align_center = "По центру", align_left = "Слева", align_right = "Справа",
 		sec_images = "// Свои картинки", img_target = "Куда", img_all = "Все вкладки", img_background = "Фон окна",
 		img_source = "Картинка", img_placeholder = "Ссылка, asset id или файл в workspace",
-		img_apply = "Применить", img_reset = "Сбросить", bg_opacity = "Яркость фона",
+		img_apply = "Применить", img_reset = "Сбросить", img_reset_all = "Сбросить все", bg_opacity = "Яркость фона",
 		img_hint = "Или положи файлы в workspace/AERO/images: overview.png, visuals.jpg, farm.png, movement.png, teleport.png, settings.png, background.png",
 	},
 }
@@ -2733,9 +2753,9 @@ end), T("farm_d")))
 
 -- Localised option labels ↔ stored identifiers
 local MODE_LABELS = { [T("mode_tween")] = "tween", [T("mode_tp")] = "teleport" }
-persist("farm_mode", FarmTab:CreateDropdown(T("farm_mode"), { T("mode_tween"), T("mode_tp") }, saved("farm_mode", function(label)
+persistChoice("farm_mode", FarmTab:CreateDropdown(T("farm_mode"), { T("mode_tween"), T("mode_tp") }, savedChoice("farm_mode", MODE_LABELS, function(label)
 	State.FarmMode = MODE_LABELS[label] or "tween"
-end), T("mode_tween")))
+end), T("mode_tween")), MODE_LABELS)
 
 persist("farm_speed", FarmTab:CreateSlider(T("farm_speed"), 10, 60, 24, saved("farm_speed", function(value)
 	State.FarmSpeed = value
@@ -2754,9 +2774,9 @@ persist("avoid_radius", FarmTab:CreateSlider(T("avoid_radius"), 10, 80, 30, save
 end), { Increment = 5, Suffix = " st" }))
 
 local FULL_LABELS = { [T("full_stop")] = "stop", [T("full_lobby")] = "lobby", [T("full_saved")] = "saved" }
-persist("on_full", FarmTab:CreateDropdown(T("on_full"), { T("full_stop"), T("full_lobby"), T("full_saved") }, saved("on_full", function(label)
+persistChoice("on_full", FarmTab:CreateDropdown(T("on_full"), { T("full_stop"), T("full_lobby"), T("full_saved") }, savedChoice("on_full", FULL_LABELS, function(label)
 	State.FarmOnFull = FULL_LABELS[label] or "stop"
-end), T("full_stop")))
+end), T("full_stop")), FULL_LABELS)
 
 FarmTab:CreateSection(T("sec_gun"))
 persist("grab", FarmTab:CreateToggle(T("grab"), false, saved("grab", function(on)
@@ -3044,14 +3064,14 @@ if HasV2 then
 	end), T("hud_feed_d")))
 
 	local ALIGN_LABELS = { [T("align_center")] = "center", [T("align_left")] = "left", [T("align_right")] = "right" }
-	persist("hud_align", Settings:CreateDropdown(T("hud_align"), { T("align_center"), T("align_left"), T("align_right") }, saved("hud_align", function(label)
+	persistChoice("hud_align", Settings:CreateDropdown(T("hud_align"), { T("align_center"), T("align_left"), T("align_right") }, savedChoice("hud_align", ALIGN_LABELS, function(label)
 		if not SettingsLoading then
 			-- an explicit choice replaces a dragged position
 			Persist.Values.hud_x, Persist.Values.hud_y = nil, nil
 			persistSaveSoon()
 		end
 		Watermark:SetAlign(ALIGN_LABELS[label] or "center")
-	end), T("align_center")))
+	end), T("align_center")), ALIGN_LABELS)
 
 	Settings:CreateSection(T("sec_images"))
 
@@ -3112,9 +3132,25 @@ if HasV2 then
 		end
 	end, { Default = type(Persist.Values.img_all) == "string" and Persist.Values.img_all or "" })
 
-	addButtons(Settings, 2, {
+	local function resetAllImages()
+		local cleared = 0
+		for key in pairs(Persist.Values) do
+			if string.sub(key, 1, 4) == "img_" then
+				Persist.Values[key] = nil
+				cleared += 1
+			end
+		end
+		persistSaveSoon()
+		imageInput:Set("", true)
+		okLog(string.format("Pictures <b>reset</b> · %d custom cleared", cleared))
+		reapplyImages("all")
+		reapplyImages("background")
+	end
+
+	addButtons(Settings, 3, {
 		{ T("img_apply"), applyImage, { Primary = true } },
 		{ T("img_reset"), resetImage },
+		{ T("img_reset_all"), resetAllImages, { Danger = true } },
 	})
 
 	persist("bg_opacity", Settings:CreateSlider(T("bg_opacity"), 0.05, 0.8, 0.25, saved("bg_opacity", function(value)
@@ -3189,6 +3225,19 @@ local function applySavedSettings()
 		elseif element.Type == "Slider" then
 			valid = type(value) == "number" and value == value
 		elseif element.Type == "Dropdown" then
+			if type(value) == "string" and element._labelById then
+				-- stored id → current label; labels from older builds map via every language
+				value = element._labelById[value] or value
+				if not table.find(element.Options, value) then
+					for _, strings in pairs(STRINGS) do
+						for stringKey, text in pairs(strings) do
+							if text == value and STRINGS[Lang][stringKey] and table.find(element.Options, STRINGS[Lang][stringKey]) then
+								value = STRINGS[Lang][stringKey]
+							end
+						end
+					end
+				end
+			end
 			valid = type(value) == "string" and table.find(element.Options, value) ~= nil
 		end
 		if valid and value ~= element.Value then
