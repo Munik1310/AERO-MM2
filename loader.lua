@@ -6,7 +6,7 @@
 	never changes under players' feet. To ship a new version: tag it, then bump VERSION here.
 ]]
 
-local VERSION = "1.1.0"
+local VERSION = "1.0.0"
 local BASE_URL = "https://raw.githubusercontent.com/Munik1310/AERO-MM2/v" .. VERSION
 local MM2_PLACE_ID = 142823291
 
