@@ -2325,7 +2325,17 @@ local function makeTab(key)
 end
 
 -- Top info bar (v2): FPS · ping · time · map · round · role, with an optional event feed.
-local Watermark = HasV2 and Window:CreateWatermark({ Align = "center" }) or nil
+local SettingsLoading = false -- true while saved values are being applied at start
+local Watermark = HasV2
+		and Window:CreateWatermark({
+			Align = "center",
+			-- remember where the player dragged the bar
+			OnMoved = function(x, y)
+				Persist.Values.hud_x, Persist.Values.hud_y = x, y
+				persistSaveSoon()
+			end,
+		})
+	or nil
 
 local function getPing()
 	local ok, value = pcall(function()
@@ -2342,9 +2352,10 @@ local function updateWatermark()
 		return
 	end
 	local items = { { Text = "AERO", Accent = true } }
-	table.insert(items, (Window.Fps and tostring(Window.Fps) or "--") .. " FPS")
+	-- fixed-width numbers (monospace font): the bar does not change width every update
+	table.insert(items, Window.Fps and string.format("%3d FPS", math.min(Window.Fps, 999)) or " -- FPS")
 	local ping = getPing()
-	table.insert(items, (ping and tostring(ping) or "--") .. " MS")
+	table.insert(items, ping and string.format("%3d MS", math.min(ping, 999)) or " -- MS")
 	table.insert(items, os.date("%H:%M:%S"))
 	local map = MapCache.Instance
 	table.insert(items, map and map.Name or T("st_lobby"))
@@ -3034,6 +3045,11 @@ if HasV2 then
 
 	local ALIGN_LABELS = { [T("align_center")] = "center", [T("align_left")] = "left", [T("align_right")] = "right" }
 	persist("hud_align", Settings:CreateDropdown(T("hud_align"), { T("align_center"), T("align_left"), T("align_right") }, saved("hud_align", function(label)
+		if not SettingsLoading then
+			-- an explicit choice replaces a dragged position
+			Persist.Values.hud_x, Persist.Values.hud_y = nil, nil
+			persistSaveSoon()
+		end
 		Watermark:SetAlign(ALIGN_LABELS[label] or "center")
 	end), T("align_center")))
 
@@ -3164,6 +3180,7 @@ addButtons(Settings, 2, {
 
 -- Apply saved values (validated per element type) and run their callbacks once.
 local function applySavedSettings()
+	SettingsLoading = true
 	for key, element in pairs(Persist.Elements) do
 		local value = Persist.Values[key]
 		local valid = false
@@ -3180,6 +3197,10 @@ local function applySavedSettings()
 				task.spawn(element._callback, element.Value)
 			end
 		end
+	end
+	SettingsLoading = false
+	if Watermark and type(Persist.Values.hud_x) == "number" and type(Persist.Values.hud_y) == "number" then
+		Watermark:SetPosition(Persist.Values.hud_x, Persist.Values.hud_y)
 	end
 end
 

@@ -19,7 +19,7 @@
 			TabOptions = { Banner = imageId, Meta = "text", ShowBanner = true }
 		Window:SetAccent(Color3) / :SetFpsVisible(bool) / :SetStatus(text|nil) / :SetScale(0.5–1.5)
 		Window:SetBackground(imageId|nil [, opacity])          -- user picture behind the window content
-		Window:CreateWatermark({ Items, Align, Feed })         -> { SetItems, Push, SetFeed, SetAlign, SetVisible }
+		Window:CreateWatermark({ Items, Align, Feed, OnMoved }) -> { SetItems, Push, SetFeed, SetAlign, SetPosition, SetVisible }
 		Window.Fps                                             -- last measured FPS
 		Window:Minimize() / :Restore() / :ToggleVisibility() / :SelectTab(tab)
 		Window:Reset() / :Log(text) / :Destroy()
@@ -866,6 +866,7 @@ function Library:CreateWindow(title, options)
 			FeedEnabled = wmOptions.Feed == true,
 			FeedDuration = wmOptions.FeedDuration or 6,
 			FeedMax = wmOptions.FeedMax or 4,
+			OnMoved = wmOptions.OnMoved, -- function(x, y) after the user drags the bar
 		}
 
 		local holder = create("Frame", {
@@ -873,7 +874,8 @@ function Library:CreateWindow(title, options)
 			BackgroundTransparency = 1,
 			AutomaticSize = Enum.AutomaticSize.XY,
 			Size = UDim2.new(),
-			Position = UDim2.fromOffset(0, 8),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 8),
 			Parent = gui,
 		}, { list(4) })
 
@@ -903,25 +905,39 @@ function Library:CreateWindow(title, options)
 
 		local segments = {}
 
+		local dragging = false
+
+		-- Anchored placement: width changes (FPS digits, map names) never move the bar,
+		-- so nothing has to be recomputed on every update.
 		local function realign()
-			if wm.Align == "custom" then
+			if dragging or wm.Align == "custom" then
 				return
 			end
-			task.defer(function()
-				local vp = gui.AbsoluteSize
-				local w = holder.AbsoluteSize.X
-				local x
-				if wm.Align == "left" then
-					x = 12
-				elseif wm.Align == "right" then
-					x = vp.X - w - 12
-				else
-					x = (vp.X - w) / 2
-				end
-				-- left/right sit under Roblox's top bar buttons, center fits beside them
-				local y = wm.Align == "center" and 8 or 64
-				setPos(holder, clampPos(holder, Vector2.new(x, y)))
-			end)
+			if wm.Align == "left" then
+				holder.AnchorPoint = Vector2.new(0, 0)
+				holder.Position = UDim2.new(0, 12, 0, 64)
+			elseif wm.Align == "right" then
+				holder.AnchorPoint = Vector2.new(1, 0)
+				holder.Position = UDim2.new(1, -12, 0, 64)
+			else
+				-- center fits between Roblox's top bar buttons
+				holder.AnchorPoint = Vector2.new(0.5, 0)
+				holder.Position = UDim2.new(0.5, 0, 0, 8)
+			end
+		end
+
+		local function clampHolder(pos)
+			local vp = gui.AbsoluteSize
+			local size = holder.AbsoluteSize
+			return Vector2.new(
+				math.clamp(pos.X, 0, math.max(0, vp.X - size.X)),
+				math.clamp(pos.Y, 0, math.max(0, vp.Y - size.Y))
+			)
+		end
+
+		local function placeAt(pos)
+			holder.AnchorPoint = Vector2.new(0, 0)
+			holder.Position = UDim2.fromOffset(pos.X, pos.Y)
 		end
 
 		-- items = { "text" | { Text = "…", Color = Color3?, Accent = true? }, … }
@@ -961,7 +977,6 @@ function Library:CreateWindow(title, options)
 					segment.Accent = item.Accent
 				end
 			end
-			realign()
 		end
 
 		function wm:Push(message)
@@ -1008,7 +1023,6 @@ function Library:CreateWindow(title, options)
 					line:Destroy()
 				end
 			end)
-			realign()
 		end
 
 		function wm:SetVisible(visible)
@@ -1032,9 +1046,59 @@ function Library:CreateWindow(title, options)
 			realign()
 		end
 
-		makeDraggable(holder, bar, nil, function()
+		-- Restore a saved custom position (screen pixels, top-left corner).
+		function wm:SetPosition(x, y)
+			x, y = tonumber(x), tonumber(y)
+			if not x or not y or x ~= x or y ~= y then
+				return
+			end
 			wm.Align = "custom"
+			task.defer(function()
+				placeAt(clampHolder(Vector2.new(x, y)))
+			end)
+		end
+
+		-- Direct drag: the bar follows the pointer 1:1, no smoothing, no competing writes.
+		local dragInput, dragStart, startPos, moved = nil, nil, nil, false
+		bar.InputBegan:Connect(function(input)
+			if not isPress(input) then
+				return
+			end
+			dragging, moved, dragInput = true, false, input
+			dragStart = input.Position
+			local abs = holder.AbsolutePosition
+			startPos = Vector2.new(abs.X, abs.Y)
 		end)
+		window:_connect(UserInputService.InputChanged:Connect(function(input)
+			if not dragging or not isMove(input) then
+				return
+			end
+			if input.UserInputType == Enum.UserInputType.Touch and input ~= dragInput then
+				return
+			end
+			local delta = input.Position - dragStart
+			local d = Vector2.new(delta.X, delta.Y)
+			if not moved then
+				if d.Magnitude < 3 then
+					return
+				end
+				moved = true
+				wm.Align = "custom"
+			end
+			placeAt(clampHolder(startPos + d))
+		end))
+		window:_connect(UserInputService.InputEnded:Connect(function(input)
+			if not dragging then
+				return
+			end
+			if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then
+				dragging = false
+				if moved and wm.OnMoved then
+					local abs = holder.AbsolutePosition
+					safeCall(wm.OnMoved, math.floor(abs.X + 0.5), math.floor(abs.Y + 0.5))
+				end
+			end
+		end))
 
 		window:_onAccent(function(a)
 			markDiamond.BackgroundColor3 = a
@@ -1047,10 +1111,16 @@ function Library:CreateWindow(title, options)
 				end
 			end
 		end)
-		window:_connect(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(realign))
+		window:_connect(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if wm.Align == "custom" and not dragging then
+				local abs = holder.AbsolutePosition
+				placeAt(clampHolder(Vector2.new(abs.X, abs.Y)))
+			end
+		end))
 
 		window._watermark = wm
 		wm:SetItems(wmOptions.Items or {})
+		realign()
 		return wm
 	end
 
