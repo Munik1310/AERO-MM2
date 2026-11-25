@@ -8,12 +8,20 @@
 - Auto grab gun: picks up GunDrop and returns to where you were (not as murderer)
 - Anti-AFK, murderer proximity alert
 
-**Banners**
-- Tab photos are AERO-graded copies hosted in this repo (`assets/banners`); Unsplash originals are the fallback
-- Cached per release, so a new version downloads its own images
+**Your own pictures**
+- Settings → Custom images: put any PNG/JPEG on all tabs, one tab or the window background
+  (URL, Roblox asset id, or a file in your workspace); saved with your settings
+- Or drop files into `workspace/AERO/images` (`overview.png`, `farm.jpg`, `background.png`, …)
+- Default tab photos are AERO-graded copies hosted in this repo (`assets/banners`), Unsplash originals as fallback
+
+**Top bar**
+- Draggable info bar in the same style: FPS, ping, time, map, round time left, your role
+- Optional event feed under it (log lines that fade out); center/left/right position
 
 **UI (DebugKit 2.2)**
-- `Library:LoadImage` accepts a list of sources and uses the first one that works
+- New: `Tab:CreateInput`, `Window:SetBackground`, `Window:CreateWatermark`, `Window.Fps`
+- `Library:LoadImage` accepts a list of sources, bare asset ids and local files (checked to be PNG/JPEG);
+  every URL gets its own cache file
 
 ## 1.0.0 — 2026-11-25
 

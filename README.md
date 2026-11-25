@@ -27,6 +27,19 @@ Roles and deaths come from the game's own player data, so they update the moment
 - **–** in the title bar collapses the window to a small button; drag it anywhere, tap it to open again. On phones this is the way to open and close.
 - Drag the window by its title bar.
 
+## Your own pictures
+
+**Settings → Custom images**: choose *All tabs*, one tab or *Window background*, paste an image and press **Apply**.
+Accepted: a direct PNG/JPEG link, a Roblox asset id (`123456789`), or a file path inside your executor's `workspace`.
+**Reset** brings back the default picture.
+
+Or simply drop files into `workspace/AERO/images`:
+`overview.png`, `visuals.png`, `farm.png`, `movement.png`, `teleport.png`, `settings.png`, `background.png` (`.jpg` works too).
+
+## Top bar
+
+A small bar at the top of the screen shows FPS, ping, time, map, round time left and your role. Drag it anywhere, or pick center/left/right in **Settings → Top bar**. **Event feed** shows the latest log lines under it.
+
 ## Saved settings
 
 Your settings are saved to `AERO/settings.json` in your executor's `workspace` folder and load automatically next time. **Settings → Reset all settings** restores the defaults.
@@ -83,6 +96,19 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Munik1310/AERO-MM2/ma
 - **Insert** — показать/скрыть окно (клавишу можно сменить в настройках).
 - **–** в заголовке сворачивает окно в маленькую кнопку: её можно перетащить, нажатие открывает окно. На телефоне открывай и закрывай так.
 - Окно перетаскивается за заголовок.
+
+### Свои картинки
+
+**Настройки → Свои картинки**: выбери «Все вкладки», одну вкладку или «Фон окна», вставь картинку и нажми **Применить**.
+Подходит прямая ссылка на PNG/JPEG, asset id Roblox (`123456789`) или путь к файлу в `workspace` экзекьютора.
+**Сбросить** возвращает картинку по умолчанию.
+
+Или просто положи файлы в `workspace/AERO/images`:
+`overview.png`, `visuals.png`, `farm.png`, `movement.png`, `teleport.png`, `settings.png`, `background.png` (можно `.jpg`).
+
+### Верхняя панель
+
+Небольшая панель сверху экрана: FPS, пинг, время, карта, сколько осталось до конца раунда и твоя роль. Её можно перетащить или выбрать положение в **Настройки → Верхняя панель**. **Лента событий** показывает под ней последние строки лога.
 
 ### Сохранение настроек
 

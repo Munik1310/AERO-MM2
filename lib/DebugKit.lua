@@ -12,18 +12,22 @@
 			Options = { Subtitle, Size = Vector2, Accent = Color3, Keybind = Enum.KeyCode }
 		Library:LoadImage(source [, cacheName])                -> imageId | nil, err
 			source = "rbxassetid://…" | local workspace path | "https://…" (HttpGet → writefile → getcustomasset)
-			         | { source1, source2, … } — tried in order, first that works wins
+			         | "123" (asset id) | { source1, source2, … } — tried in order, first that works wins
 		Library.Strings                                        -- built-in UI text, override for localisation
 
 		Window:CreateTab(Name [, IconImage] [, TabOptions])    -> Tab
 			TabOptions = { Banner = imageId, Meta = "text", ShowBanner = true }
 		Window:SetAccent(Color3) / :SetFpsVisible(bool) / :SetStatus(text|nil) / :SetScale(0.5–1.5)
+		Window:SetBackground(imageId|nil [, opacity])          -- user picture behind the window content
+		Window:CreateWatermark({ Items, Align, Feed })         -> { SetItems, Push, SetFeed, SetAlign, SetVisible }
+		Window.Fps                                             -- last measured FPS
 		Window:Minimize() / :Restore() / :ToggleVisibility() / :SelectTab(tab)
 		Window:Reset() / :Log(text) / :Destroy()
 
 		Tab:SetBanner(imageId|nil) / Tab:SetMeta(text)
 		Tab:CreateSection(Text)                                -> TextLabel
 		Tab:CreateLabel(Text [, { Mono = true }])              -> { Set, Get, Instance }
+		Tab:CreateInput(Text, Placeholder, Callback(text, enter) [, { Default }]) -> { Value, Set, Get }
 		Tab:CreateToggle(Text, Default, Callback [, Description])              -> { Value, Set, Get }
 		Tab:CreateSlider(Text, Min, Max, Default, Callback [, Options])        -> { Value, Set, Get }
 			Options = { Increment = 1, Suffix = " ms", Decimals = 0 }
@@ -300,16 +304,31 @@ local function ensureFolder(path)
 	end
 end
 
-local function looksLikeImage(bytes)
-	return string.sub(bytes, 1, 4) == "\137PNG" or string.sub(bytes, 1, 3) == "\255\216\255"
+-- Short stable hash for cache file names (djb2, 32-bit).
+local function hashString(text)
+	local h = 5381
+	for i = 1, #text do
+		h = (h * 33 + string.byte(text, i)) % 4294967296
+	end
+	return string.format("%08x", h)
 end
 
-function Library:LoadImage(source, cacheName)
+local function imageExtension(bytes)
+	if string.sub(bytes, 1, 4) == "\137PNG" then
+		return "png"
+	elseif string.sub(bytes, 1, 3) == "\255\216\255" then
+		return "jpg"
+	end
+	return nil
+end
+
+-- source: "rbxassetid://123" | "123" | workspace file path | "https://…" | { sources… }
+-- prefix: optional cache file name prefix (each URL still gets its own file).
+function Library:LoadImage(source, prefix)
 	if type(source) == "table" then
 		local errors = {}
-		for index, candidate in ipairs(source) do
-			local name = cacheName and (index == 1 and cacheName or (index .. "_" .. cacheName)) or nil
-			local image, err = self:LoadImage(candidate, name)
+		for _, candidate in ipairs(source) do
+			local image, err = self:LoadImage(candidate, prefix)
 			if image then
 				return image
 			end
@@ -317,8 +336,15 @@ function Library:LoadImage(source, cacheName)
 		end
 		return nil, #errors > 0 and table.concat(errors, " | ") or "no sources"
 	end
-	if type(source) ~= "string" or source == "" then
+	if type(source) ~= "string" then
 		return nil, "no source"
+	end
+	source = string.match(source, "^%s*(.-)%s*$")
+	if source == "" then
+		return nil, "no source"
+	end
+	if string.match(source, "^%d+$") then
+		return "rbxassetid://" .. source
 	end
 	if string.match(source, "^rbxasset") or string.match(source, "^rbxthumb") then
 		return source
@@ -329,27 +355,44 @@ function Library:LoadImage(source, cacheName)
 
 	local path = source
 	if string.match(source, "^https?://") then
-		if typeof(writefile) ~= "function" then
-			return nil, "writefile unavailable"
+		if typeof(writefile) ~= "function" or typeof(isfile) ~= "function" then
+			return nil, "writefile/isfile unavailable"
 		end
-		local name = cacheName or string.sub((string.gsub(source, "[^%w%.]", "_")), -60)
-		path = "DebugKit/cache/" .. name
-		local cached = typeof(isfile) == "function" and isfile(path)
-		if not cached then
+		local base = "DebugKit/cache/" .. (prefix and (prefix .. "_") or "") .. hashString(source)
+		if isfile(base .. ".png") then
+			path = base .. ".png"
+		elseif isfile(base .. ".jpg") then
+			path = base .. ".jpg"
+		else
 			local ok, body = pcall(game.HttpGet, game, source)
 			if not ok or type(body) ~= "string" then
 				return nil, "download failed: " .. tostring(body)
 			end
-			if not looksLikeImage(body) then
+			local ext = imageExtension(body)
+			if not ext then
 				return nil, "not a PNG/JPEG (" .. #body .. " bytes)"
 			end
-			local okFolder = pcall(ensureFolder, "DebugKit/cache")
-			if not okFolder then
+			if not pcall(ensureFolder, "DebugKit/cache") then
 				return nil, "makefolder failed"
 			end
+			path = base .. "." .. ext
 			local okWrite, err = pcall(writefile, path, body)
 			if not okWrite then
 				return nil, "writefile failed: " .. tostring(err)
+			end
+		end
+	else
+		-- local workspace file: must exist and be a PNG/JPEG
+		if typeof(isfile) == "function" then
+			local okExists, exists = pcall(isfile, path)
+			if not okExists or not exists then
+				return nil, "file not found: " .. path
+			end
+		end
+		if typeof(readfile) == "function" then
+			local okRead, bytes = pcall(readfile, path)
+			if okRead and type(bytes) == "string" and not imageExtension(bytes) then
+				return nil, "not a PNG/JPEG: " .. path
 			end
 		end
 	end
@@ -418,6 +461,29 @@ function Library:CreateWindow(title, options)
 	window._main = main
 	window._userScale = 1
 	local mainBrackets = brackets(main, T.BracketSize, T.BracketThickness)
+
+	-- Optional user background, drawn under everything else in the window.
+	local backgroundImage = create("ImageLabel", {
+		Name = "Background",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ScaleType = Enum.ScaleType.Crop,
+		ImageColor3 = Color3.fromRGB(150, 154, 162),
+		Visible = false,
+		Parent = main,
+	})
+
+	-- image: asset id string or nil to clear; opacity 0..1 (default 0.25)
+	function window:SetBackground(image, opacity)
+		if type(image) == "string" and image ~= "" then
+			backgroundImage.Image = image
+			backgroundImage.ImageTransparency = 1 - math.clamp(tonumber(opacity) or 0.25, 0, 1)
+			backgroundImage.Visible = true
+		else
+			backgroundImage.Image = ""
+			backgroundImage.Visible = false
+		end
+	end
 
 	local function divider(position, size)
 		return create("Frame", {
@@ -675,6 +741,9 @@ function Library:CreateWindow(title, options)
 		local uiScale = target:FindFirstChildOfClass("UIScale")
 		local s = uiScale and uiScale.Scale or 1
 		local w, h = target.Size.X.Offset * s, target.Size.Y.Offset * s
+		if w <= 0 or h <= 0 then
+			w, h = target.AbsoluteSize.X, target.AbsoluteSize.Y
+		end
 		return Vector2.new(math.clamp(pos.X, 0, math.max(0, vp.X - w)), math.clamp(pos.Y, 0, math.max(0, vp.Y - h)))
 	end
 	local function getPos(target)
@@ -684,7 +753,7 @@ function Library:CreateWindow(title, options)
 		target.Position = UDim2.fromOffset(pos.X, pos.Y)
 	end
 
-	local function makeDraggable(target, handle, onClick)
+	local function makeDraggable(target, handle, onClick, onMoved)
 		local dragging, dragInput, startInput, startPos, moved, goal = false, nil, nil, nil, false, nil
 
 		handle.InputBegan:Connect(function(input)
@@ -721,6 +790,8 @@ function Library:CreateWindow(title, options)
 				dragging = false
 				if not moved and onClick then
 					onClick()
+				elseif moved and onMoved then
+					onMoved()
 				end
 			end
 		end))
@@ -787,6 +858,202 @@ function Library:CreateWindow(title, options)
 		window:Minimize()
 	end)
 
+	-- Watermark: draggable info bar + event feed, independent of the window ------
+	function window:CreateWatermark(wmOptions)
+		wmOptions = wmOptions or {}
+		local wm = {
+			Align = wmOptions.Align or "center",
+			FeedEnabled = wmOptions.Feed == true,
+			FeedDuration = wmOptions.FeedDuration or 6,
+			FeedMax = wmOptions.FeedMax or 4,
+		}
+
+		local holder = create("Frame", {
+			Name = "Watermark",
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.XY,
+			Size = UDim2.new(),
+			Position = UDim2.fromOffset(0, 8),
+			Parent = gui,
+		}, { list(4) })
+
+		local bar = create("Frame", {
+			BackgroundColor3 = T.Background,
+			BackgroundTransparency = T.BackgroundTransparency,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 26),
+			LayoutOrder = 1,
+			Active = true,
+			Parent = holder,
+		}, { padding(0, 10, 0, 10), list(8, Enum.FillDirection.Horizontal, Enum.VerticalAlignment.Center) })
+		local barStroke = stroke(T.Border, T.BorderTransparency)
+		barStroke.Parent = bar
+		local barBrackets = brackets(bar, 8, 1)
+
+		local mark = create("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(8, 8), LayoutOrder = 0, Parent = bar })
+		local markDiamond = diamond(mark, 6)
+
+		local feed = create("Frame", {
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.XY,
+			Size = UDim2.new(),
+			LayoutOrder = 2,
+			Parent = holder,
+		}, { list(3) })
+
+		local segments = {}
+
+		local function realign()
+			if wm.Align == "custom" then
+				return
+			end
+			task.defer(function()
+				local vp = gui.AbsoluteSize
+				local w = holder.AbsoluteSize.X
+				local x
+				if wm.Align == "left" then
+					x = 12
+				elseif wm.Align == "right" then
+					x = vp.X - w - 12
+				else
+					x = (vp.X - w) / 2
+				end
+				-- left/right sit under Roblox's top bar buttons, center fits beside them
+				local y = wm.Align == "center" and 8 or 64
+				setPos(holder, clampPos(holder, Vector2.new(x, y)))
+			end)
+		end
+
+		-- items = { "text" | { Text = "…", Color = Color3?, Accent = true? }, … }
+		function wm:SetItems(items)
+			items = items or {}
+			for i = #segments + 1, #items do
+				local divider = create("Frame", {
+					Size = UDim2.fromOffset(1, 12),
+					BackgroundColor3 = T.Border,
+					BackgroundTransparency = 0.8,
+					LayoutOrder = i * 2 - 1,
+					Visible = i > 1,
+					Parent = bar,
+				})
+				local text = label({
+					Font = T.FontMono,
+					TextSize = 11,
+					AutomaticSize = Enum.AutomaticSize.X,
+					Size = UDim2.fromOffset(0, 26),
+					LayoutOrder = i * 2,
+					Parent = bar,
+				})
+				segments[i] = { Divider = divider, Text = text }
+			end
+			for i, segment in ipairs(segments) do
+				local item = items[i]
+				local visible = item ~= nil
+				segment.Text.Visible = visible
+				segment.Divider.Visible = visible and i > 1
+				if visible then
+					if type(item) ~= "table" then
+						item = { Text = tostring(item) }
+					end
+					segment.Text.Text = tostring(item.Text or "")
+					segment.Text.Font = item.Accent and T.FontHeading or T.FontMono
+					segment.Text.TextColor3 = item.Accent and window.Accent or (item.Color or T.Text)
+					segment.Accent = item.Accent
+				end
+			end
+			realign()
+		end
+
+		function wm:Push(message)
+			if not wm.FeedEnabled then
+				return
+			end
+			local hex = toHex(window.Accent)
+			local line = create("Frame", {
+				BackgroundColor3 = T.Background,
+				BackgroundTransparency = 0.12,
+				AutomaticSize = Enum.AutomaticSize.X,
+				Size = UDim2.fromOffset(0, 20),
+				LayoutOrder = math.floor(os.clock() * 1000) % 1000000000,
+				Parent = feed,
+			}, { padding(0, 8, 0, 8), stroke(T.Border, T.BorderTransparency) })
+			local text = label({
+				Font = T.FontMono,
+				TextSize = 11,
+				RichText = true,
+				AutomaticSize = Enum.AutomaticSize.X,
+				Size = UDim2.fromOffset(0, 20),
+				TextColor3 = T.Text,
+				Text = string.format('<font color="%s">%s</font>  %s', toHex(T.TextFaint), timestamp(),
+					(tostring(message):gsub("<b>", '<font color="' .. hex .. '">'):gsub("</b>", "</font>"))),
+				Parent = line,
+			})
+			local lines = {}
+			for _, child in ipairs(feed:GetChildren()) do
+				if child:IsA("Frame") then
+					table.insert(lines, child)
+				end
+			end
+			table.sort(lines, function(a, b)
+				return a.LayoutOrder < b.LayoutOrder
+			end)
+			for i = 1, #lines - wm.FeedMax do
+				lines[i]:Destroy()
+			end
+			task.delay(wm.FeedDuration, function()
+				if line.Parent then
+					tween(line, { BackgroundTransparency = 1 }, TweenInfo.new(0.4))
+					tween(text, { TextTransparency = 1 }, TweenInfo.new(0.4))
+					task.wait(0.45)
+					line:Destroy()
+				end
+			end)
+			realign()
+		end
+
+		function wm:SetVisible(visible)
+			holder.Visible = visible == true
+		end
+
+		function wm:SetFeed(enabled)
+			wm.FeedEnabled = enabled == true
+			if not wm.FeedEnabled then
+				for _, child in ipairs(feed:GetChildren()) do
+					if child:IsA("Frame") then
+						child:Destroy()
+					end
+				end
+			end
+		end
+
+		-- "left" | "center" | "right"; dragging the bar switches to "custom"
+		function wm:SetAlign(align)
+			wm.Align = align
+			realign()
+		end
+
+		makeDraggable(holder, bar, nil, function()
+			wm.Align = "custom"
+		end)
+
+		window:_onAccent(function(a)
+			markDiamond.BackgroundColor3 = a
+			for _, part in ipairs(barBrackets) do
+				part.BackgroundColor3 = a
+			end
+			for _, segment in ipairs(segments) do
+				if segment.Accent then
+					segment.Text.TextColor3 = a
+				end
+			end
+		end)
+		window:_connect(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(realign))
+
+		window._watermark = wm
+		wm:SetItems(wmOptions.Items or {})
+		return wm
+	end
+
 	window:_connect(UserInputService.InputBegan:Connect(function(input, processed)
 		if not processed and input.KeyCode == window.Keybind then
 			window:ToggleVisibility()
@@ -816,7 +1083,8 @@ function Library:CreateWindow(title, options)
 		frames += 1
 		local now = os.clock()
 		if now - last >= 0.5 then
-			fpsLabel.Text = math.floor(frames / (now - last) + 0.5) .. " FPS"
+			window.Fps = math.floor(frames / (now - last) + 0.5)
+			fpsLabel.Text = window.Fps .. " FPS"
 			frames, last = 0, now
 		end
 	end))
@@ -869,6 +1137,9 @@ function Window:Log(message, toConsole)
 	self._logMsg.Text = (message:gsub("<b>", '<font color="' .. hex .. '">'):gsub("</b>", "</font>"))
 	self._logMsg.TextColor3 = T.Text
 	tween(self._logMsg, { TextColor3 = T.TextDim }, TweenInfo.new(0.4))
+	if self._watermark then
+		self._watermark:Push(message)
+	end
 	if Library.LogToConsole and toConsole ~= false then
 		print("[DebugKit] " .. (message:gsub("<[^>]->", ""):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&amp;", "&")))
 	end
@@ -1728,6 +1999,72 @@ function Tab:CreateDropdown(text, optionList, callback, default)
 	table.insert(window._dropdowns, dropdown)
 	table.insert(window._elements, dropdown)
 	return dropdown
+end
+
+--------------------------------------------------------------------------
+-- Text input
+--------------------------------------------------------------------------
+
+-- callback(text, enterPressed) fires when focus is lost with a changed value or on Enter.
+function Tab:CreateInput(text, placeholder, callback, inputOptions)
+	local T = Library.Theme
+	local window = self.Window
+	inputOptions = inputOptions or {}
+	local default = tostring(inputOptions.Default or "")
+	local input = { Type = "Input", Value = default, Default = default, _callback = callback }
+
+	local row = self:_row(58)
+	label({
+		Position = UDim2.fromOffset(12, 8),
+		Size = UDim2.new(1, -24, 0, 16),
+		Font = T.FontMedium,
+		Text = text,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	local box = create("TextBox", {
+		Position = UDim2.new(0, 12, 0, 29),
+		Size = UDim2.new(1, -24, 0, 22),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.7,
+		ClearTextOnFocus = inputOptions.ClearOnFocus == true,
+		Font = T.FontMono,
+		TextSize = 11,
+		TextColor3 = T.Text,
+		PlaceholderText = placeholder or "",
+		PlaceholderColor3 = T.TextFaint,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = default,
+		Parent = row,
+	}, { padding(0, 8, 0, 8) })
+	local boxStroke = stroke(T.Border, T.BorderTransparency)
+	boxStroke.Parent = box
+
+	function input:Set(value, silent, enterPressed)
+		value = tostring(value or "")
+		local changed = value ~= self.Value
+		self.Value = value
+		box.Text = value
+		if (changed or enterPressed) and not silent then
+			safeCall(callback, value, enterPressed == true)
+		end
+	end
+
+	function input:Get()
+		return self.Value
+	end
+
+	box.Focused:Connect(function()
+		tween(boxStroke, { Color = window.Accent, Transparency = 0.4 })
+	end)
+	box.FocusLost:Connect(function(enterPressed)
+		tween(boxStroke, { Color = T.Border, Transparency = T.BorderTransparency })
+		input:Set(box.Text, false, enterPressed)
+	end)
+
+	table.insert(window._elements, input)
+	return input
 end
 
 --------------------------------------------------------------------------

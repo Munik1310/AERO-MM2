@@ -287,6 +287,13 @@ local STRINGS = {
 		sec_util = "// Utility",
 		antiafk = "Anti-AFK", antiafk_d = "Prevents the idle kick",
 		alert = "Murderer alert", alert_d = "Log warning when the murderer is close", alert_radius = "Alert radius",
+		sec_hud = "// Top bar", hud_bar = "Info bar", hud_bar_d = "FPS · ping · time · map · round · role",
+		hud_feed = "Event feed", hud_feed_d = "Log lines under the bar", hud_align = "Position",
+		align_center = "Center", align_left = "Left", align_right = "Right",
+		sec_images = "// Custom images", img_target = "Where", img_all = "All tabs", img_background = "Window background",
+		img_source = "Image", img_placeholder = "URL, asset id or file in workspace",
+		img_apply = "Apply", img_reset = "Reset", bg_opacity = "Background opacity",
+		img_hint = "Or put files into workspace/AERO/images: overview.png, visuals.jpg, farm.png, movement.png, teleport.png, settings.png, background.png",
 	},
 	ru = {
 		tab_overview = "Обзор", tab_visuals = "Визуал", tab_movement = "Движение",
@@ -357,6 +364,13 @@ local STRINGS = {
 		sec_util = "// Утилиты",
 		antiafk = "Анти-AFK", antiafk_d = "Не даёт кикнуть за бездействие",
 		alert = "Предупреждение об убийце", alert_d = "Пишет в лог, когда убийца рядом", alert_radius = "Радиус предупреждения",
+		sec_hud = "// Верхняя панель", hud_bar = "Инфо-панель", hud_bar_d = "FPS · пинг · время · карта · раунд · роль",
+		hud_feed = "Лента событий", hud_feed_d = "Строки лога под панелью", hud_align = "Позиция",
+		align_center = "По центру", align_left = "Слева", align_right = "Справа",
+		sec_images = "// Свои картинки", img_target = "Куда", img_all = "Все вкладки", img_background = "Фон окна",
+		img_source = "Картинка", img_placeholder = "Ссылка, asset id или файл в workspace",
+		img_apply = "Применить", img_reset = "Сбросить", bg_opacity = "Яркость фона",
+		img_hint = "Или положи файлы в workspace/AERO/images: overview.png, visuals.jpg, farm.png, movement.png, teleport.png, settings.png, background.png",
 	},
 }
 
@@ -1047,6 +1061,10 @@ local State = {
 	AntiAFK = false,
 	MurdererAlert = false,
 	AlertRadius = 35,
+
+	-- Interface
+	HudBar = true,
+	BgOpacity = 0.25,
 }
 
 local ROLE_COLORS = {
@@ -2211,28 +2229,134 @@ local TAB_META = {
 	Settings = "AERO " .. AERO_VERSION .. " · DebugKit " .. tostring(Library.Version),
 }
 
+local TAB_KEYS = { "Overview", "Visuals", "Farm", "Movement", "Teleport", "Settings" }
+local TabsByKey = {}
+local USER_IMAGE_FOLDER = "AERO/images"
+
+-- Player's own pictures, highest priority first:
+--   1) Settings → Custom images for this target, 2) the "all tabs" picture (tabs only),
+--   3) a file workspace/AERO/images/<name>.png|jpg|jpeg
+local function userImageSources(name)
+	local list = {}
+	local custom = Persist.Values["img_" .. name]
+	if type(custom) == "string" and custom ~= "" then
+		table.insert(list, custom)
+	end
+	if name ~= "background" then
+		local all = Persist.Values.img_all
+		if type(all) == "string" and all ~= "" then
+			table.insert(list, all)
+		end
+	end
+	if typeof(isfile) == "function" then
+		for _, ext in ipairs({ "png", "jpg", "jpeg" }) do
+			local path = USER_IMAGE_FOLDER .. "/" .. name .. "." .. ext
+			local ok, exists = pcall(isfile, path)
+			if ok and exists then
+				table.insert(list, path)
+				break
+			end
+		end
+	end
+	return list
+end
+
+local function applyBanner(key)
+	local tab = TabsByKey[key]
+	if not HasV2 or not tab then
+		return
+	end
+	local sources = userImageSources(string.lower(key))
+	local userCount = #sources
+	for _, source in ipairs(BANNERS[key] or {}) do
+		table.insert(sources, source)
+	end
+	task.spawn(function()
+		local image, err = Library:LoadImage(sources, "aero")
+		if Unloaded then
+			return
+		end
+		if image then
+			tab:SetBanner(image)
+		else
+			tab:SetBanner(nil)
+			warnLog("Banner " .. esc(key) .. ": " .. esc(err))
+		end
+		if userCount > 0 and not image then
+			warnLog("Custom image for <b>" .. esc(key) .. "</b> failed")
+		end
+	end)
+end
+
+local CurrentBackground = nil
+
+local function applyBackground()
+	if not HasV2 then
+		return
+	end
+	local sources = userImageSources("background")
+	if #sources == 0 then
+		CurrentBackground = nil
+		Window:SetBackground(nil)
+		return
+	end
+	task.spawn(function()
+		local image, err = Library:LoadImage(sources, "aero_user")
+		if Unloaded then
+			return
+		end
+		CurrentBackground = image
+		Window:SetBackground(image, State.BgOpacity)
+		if not image then
+			warnLog("Background: " .. esc(err))
+		end
+	end)
+end
+
 local function makeTab(key)
 	local title = T("tab_" .. string.lower(key))
 	if not HasV2 then
 		return Window:CreateTab(title)
 	end
 	local tab = Window:CreateTab(title, { Meta = TAB_META[key] })
-	local source = BANNERS[key]
-	if source then
-		task.spawn(function()
-			-- versioned cache name: a new release re-downloads its own banners
-			local image, err = Library:LoadImage(source, string.format("aero_%s_%s.jpg", AERO_VERSION, string.lower(key)))
-			if Unloaded then
-				return
-			end
-			if image then
-				tab:SetBanner(image)
-			else
-				warnLog("Banner " .. esc(key) .. ": " .. esc(err))
-			end
-		end)
-	end
+	TabsByKey[key] = tab
+	applyBanner(key)
 	return tab
+end
+
+-- Top info bar (v2): FPS · ping · time · map · round · role, with an optional event feed.
+local Watermark = HasV2 and Window:CreateWatermark({ Align = "center" }) or nil
+
+local function getPing()
+	local ok, value = pcall(function()
+		return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+	end)
+	if ok and type(value) == "number" and value == value and value >= 0 and value < 100000 then
+		return math.floor(value + 0.5)
+	end
+	return nil
+end
+
+local function updateWatermark()
+	if not Watermark or not State.HudBar then
+		return
+	end
+	local items = { { Text = "AERO", Accent = true } }
+	table.insert(items, (Window.Fps and tostring(Window.Fps) or "--") .. " FPS")
+	local ping = getPing()
+	table.insert(items, (ping and tostring(ping) or "--") .. " MS")
+	table.insert(items, os.date("%H:%M:%S"))
+	local map = MapCache.Instance
+	table.insert(items, map and map.Name or T("st_lobby"))
+	if RoundInfo.Length and RoundInfo.StartedAt then
+		local left = math.max(0, RoundInfo.Length - (os.clock() - RoundInfo.StartedAt))
+		table.insert(items, string.format("%d:%02d", math.floor(left / 60), math.floor(left % 60)))
+	end
+	local class, label = getRoleInfo(LocalPlayer)
+	if label then
+		table.insert(items, { Text = string.upper(roleText(label)), Color = ROLE_COLORS[class] })
+	end
+	Watermark:SetItems(items)
 end
 
 --------------------------------------------------------------------------
@@ -2894,6 +3018,99 @@ persist("console", Settings:CreateToggle(T("console"), false, saved("console", f
 	Library.LogToConsole = on
 end)))
 
+if HasV2 then
+	Settings:CreateSection(T("sec_hud"))
+	persist("hud_bar", Settings:CreateToggle(T("hud_bar"), true, saved("hud_bar", function(on)
+		State.HudBar = on
+		Watermark:SetVisible(on)
+		if on then
+			updateWatermark()
+		end
+	end), T("hud_bar_d")))
+
+	persist("hud_feed", Settings:CreateToggle(T("hud_feed"), false, saved("hud_feed", function(on)
+		Watermark:SetFeed(on)
+	end), T("hud_feed_d")))
+
+	local ALIGN_LABELS = { [T("align_center")] = "center", [T("align_left")] = "left", [T("align_right")] = "right" }
+	persist("hud_align", Settings:CreateDropdown(T("hud_align"), { T("align_center"), T("align_left"), T("align_right") }, saved("hud_align", function(label)
+		Watermark:SetAlign(ALIGN_LABELS[label] or "center")
+	end), T("align_center")))
+
+	Settings:CreateSection(T("sec_images"))
+
+	local targetLabels, targetByLabel, keyByName = { T("img_all") }, { [T("img_all")] = "all" }, {}
+	for _, key in ipairs(TAB_KEYS) do
+		local labelText = T("tab_" .. string.lower(key))
+		table.insert(targetLabels, labelText)
+		targetByLabel[labelText] = string.lower(key)
+		keyByName[string.lower(key)] = key
+	end
+	table.insert(targetLabels, T("img_background"))
+	targetByLabel[T("img_background")] = "background"
+
+	local imageTarget = "all"
+	local imageInput
+
+	local function reapplyImages(target)
+		if target == "background" then
+			applyBackground()
+		elseif target == "all" then
+			for _, key in ipairs(TAB_KEYS) do
+				applyBanner(key)
+			end
+		elseif keyByName[target] then
+			applyBanner(keyByName[target])
+		end
+	end
+
+	local function applyImage()
+		local source = string.match(imageInput.Value or "", "^%s*(.-)%s*$")
+		if source == "" then
+			warnLog("Image: <b>empty</b> · paste a URL, asset id or workspace file path")
+			return
+		end
+		Persist.Values["img_" .. imageTarget] = source
+		persistSaveSoon()
+		log("Image → <b>" .. esc(imageTarget) .. "</b> · loading")
+		reapplyImages(imageTarget)
+	end
+
+	local function resetImage()
+		Persist.Values["img_" .. imageTarget] = nil
+		persistSaveSoon()
+		imageInput:Set("", true)
+		log("Image → <b>" .. esc(imageTarget) .. "</b> · default")
+		reapplyImages(imageTarget)
+	end
+
+	Settings:CreateDropdown(T("img_target"), targetLabels, function(labelText)
+		imageTarget = targetByLabel[labelText] or "all"
+		local current = Persist.Values["img_" .. imageTarget]
+		imageInput:Set(type(current) == "string" and current or "", true)
+	end, targetLabels[1])
+
+	imageInput = Settings:CreateInput(T("img_source"), T("img_placeholder"), function(_, enterPressed)
+		if enterPressed then
+			applyImage()
+		end
+	end, { Default = type(Persist.Values.img_all) == "string" and Persist.Values.img_all or "" })
+
+	addButtons(Settings, 2, {
+		{ T("img_apply"), applyImage, { Primary = true } },
+		{ T("img_reset"), resetImage },
+	})
+
+	persist("bg_opacity", Settings:CreateSlider(T("bg_opacity"), 0.05, 0.8, 0.25, saved("bg_opacity", function(value)
+		State.BgOpacity = value
+		if CurrentBackground then
+			Window:SetBackground(CurrentBackground, value)
+		end
+	end), { Increment = 0.05, Decimals = 2 }))
+
+	Settings:CreateLabel(T("img_hint"), { Mono = true })
+end
+
 Settings:CreateSection(T("sec_diag"))
 Settings:CreateToggle(T("collect"), false, function(on)
 	if on then
@@ -3080,7 +3297,7 @@ end)
 -- Runtime loops
 --------------------------------------------------------------------------
 
-local espAccum, statusAccum, roleAccum = 0, 0, 0
+local espAccum, statusAccum, roleAccum, hudAccum = 0, 0, 0, 0
 track(RunService.Heartbeat:Connect(function(dt)
 	if Unloaded then
 		return
@@ -3102,6 +3319,11 @@ track(RunService.Heartbeat:Connect(function(dt)
 		if updateFarmStatus then
 			safe("Farm status", updateFarmStatus)
 		end
+	end
+	hudAccum += dt
+	if hudAccum >= 0.5 then
+		hudAccum = 0
+		safe("Top bar", updateWatermark)
 	end
 	roleAccum += dt
 	if roleAccum >= GameConfig.RoleData.PollInterval then
@@ -3206,6 +3428,7 @@ genv.AeroMM2Unload = unload
 -- Injected mid-round: a loaded map means a round is running, so accept player data now.
 RoundInfo.Active = findActiveMap() ~= nil
 safe("Settings", applySavedSettings)
+safe("Background", applyBackground)
 safe("Status", updateStatus)
 safe("Map points", refreshPoints, true)
 fetchRoleData()
