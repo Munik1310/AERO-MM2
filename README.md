@@ -36,6 +36,10 @@ Accepted: a direct PNG/JPEG link, a Roblox asset id (`123456789`), or a file pat
 Or simply drop files into `workspace/AERO/images`:
 `overview.png`, `visuals.png`, `farm.png`, `movement.png`, `teleport.png`, `settings.png`, `background.png` (`.jpg` works too).
 
+## Startup intro
+
+On start AERO plays a short calibration splash with a live boot log. Click, tap or press any key to skip it. Turn it off in **Settings → Startup intro**, replay it with **Settings → Play intro**.
+
 ## Top bar
 
 A small bar at the top of the screen shows FPS, ping, time, map, round time left and your role. Drag it anywhere, or pick center/left/right in **Settings → Top bar**. **Event feed** shows the latest log lines under it.
@@ -105,6 +109,10 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Munik1310/AERO-MM2/ma
 
 Или просто положи файлы в `workspace/AERO/images`:
 `overview.png`, `visuals.png`, `farm.png`, `movement.png`, `teleport.png`, `settings.png`, `background.png` (можно `.jpg`).
+
+### Заставка
+
+При запуске AERO показывает короткую заставку «калибровки» с живым логом загрузки. Клик, касание или любая клавиша её пропускают. Выключить — **Настройки → Заставка при запуске**, посмотреть ещё раз — **Настройки → Показать заставку**.
 
 ### Верхняя панель
 

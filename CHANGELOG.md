@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 — 2026-11-25
+
+**Startup intro (new)**
+- "Calibration" splash when the script starts: screen dims, scanline sweep, corner brackets fly in
+  to a reticle, radar sweep, glitch title, live boot log (DebugKit, player data, map, banners,
+  coins, role), calibration counter; then it collapses into the top bar and the window springs in
+- Click, tap or any key skips it; Settings → Startup intro turns it off, Settings → Play intro replays it
+
+**UI (DebugKit 2.3)**
+- New `Window:PlayIntro({ Title, Subtitle, Lines, Footer, OnDone })`; lines can show live values
+
 ## 1.1.0 — 2026-11-25
 
 **Farm tab (new)**

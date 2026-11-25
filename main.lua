@@ -19,7 +19,7 @@ if not LocalPlayer then
 	error("[AERO] Must run on the client (Players.LocalPlayer is nil)")
 end
 
-local AERO_VERSION = "1.1.0"
+local AERO_VERSION = "1.2.0"
 -- Raw base of the release this file was published with (loader.lua points at the same tag).
 local AERO_BASE_URL = "https://raw.githubusercontent.com/Munik1310/AERO-MM2/v" .. AERO_VERSION
 local MM2_PLACE_ID = 142823291
@@ -313,6 +313,7 @@ local STRINGS = {
 		sec_images = "// Custom images", img_target = "Where", img_all = "All tabs", img_background = "Window background",
 		img_source = "Image", img_placeholder = "URL, asset id or file in workspace",
 		img_apply = "Apply", img_reset = "Reset", img_reset_all = "Reset all", bg_opacity = "Background opacity",
+		intro = "Startup intro", intro_d = "Calibration splash when the script starts", play_intro = "Play intro",
 		img_hint = "Or put files into workspace/AERO/images: overview.png, visuals.jpg, farm.png, movement.png, teleport.png, settings.png, background.png",
 	},
 	ru = {
@@ -390,6 +391,7 @@ local STRINGS = {
 		sec_images = "// Свои картинки", img_target = "Куда", img_all = "Все вкладки", img_background = "Фон окна",
 		img_source = "Картинка", img_placeholder = "Ссылка, asset id или файл в workspace",
 		img_apply = "Применить", img_reset = "Сбросить", img_reset_all = "Сбросить все", bg_opacity = "Яркость фона",
+		intro = "Заставка при запуске", intro_d = "Анимация калибровки при запуске скрипта", play_intro = "Показать заставку",
 		img_hint = "Или положи файлы в workspace/AERO/images: overview.png, visuals.jpg, farm.png, movement.png, teleport.png, settings.png, background.png",
 	},
 }
@@ -2251,6 +2253,7 @@ local TAB_META = {
 
 local TAB_KEYS = { "Overview", "Visuals", "Farm", "Movement", "Teleport", "Settings" }
 local TabsByKey = {}
+local BannerStats = { Loaded = {} } -- [tabKey] = true once a banner image is shown
 local USER_IMAGE_FOLDER = "AERO/images"
 
 -- Player's own pictures, highest priority first:
@@ -2298,6 +2301,7 @@ local function applyBanner(key)
 		end
 		if image then
 			tab:SetBanner(image)
+			BannerStats.Loaded[key] = true
 		else
 			tab:SetBanner(nil)
 			warnLog("Banner " .. esc(key) .. ": " .. esc(err))
@@ -3045,6 +3049,10 @@ persist("fps", Settings:CreateToggle(T("fps"), true, saved("fps", function(on)
 	Window:SetFpsVisible(on)
 end)))
 
+if HasV2 then
+	persist("intro", Settings:CreateToggle(T("intro"), true, saved("intro"), T("intro_d")))
+end
+
 persist("console", Settings:CreateToggle(T("console"), false, saved("console", function(on)
 	Library.LogToConsole = on
 end)))
@@ -3197,8 +3205,10 @@ addButtons(Settings, 3, {
 	},
 })
 
+local playIntro -- assigned after the UI is built
+
 Settings:CreateSection(T("sec_session"))
-addButtons(Settings, 2, {
+addButtons(Settings, HasV2 and 3 or 2, {
 	{
 		T("reset"),
 		function()
@@ -3212,6 +3222,14 @@ addButtons(Settings, 2, {
 		end,
 		{ Danger = true },
 	},
+	HasV2 and {
+		T("play_intro"),
+		function()
+			if playIntro then
+				playIntro()
+			end
+		end,
+	} or nil,
 })
 
 -- Apply saved values (validated per element type) and run their callbacks once.
@@ -3499,6 +3517,72 @@ genv.AeroMM2Unload = unload
 RoundInfo.Active = findActiveMap() ~= nil
 safe("Settings", applySavedSettings)
 safe("Background", applyBackground)
+
+playIntro = function()
+	if not HasV2 or type(Window.PlayIntro) ~= "function" then
+		return
+	end
+	local okColor = Color3.fromRGB(124, 255, 178)
+	Window:PlayIntro({
+		Title = "AERO // MM2",
+		Subtitle = string.format("Tactical HUD · build %s · DebugKit %s", AERO_VERSION, tostring(Library.Version)),
+		Lines = {
+			{ Key = "DebugKit " .. tostring(Library.Version), Value = "linked", Color = okColor },
+			{
+				Key = "Player data",
+				Value = function()
+					return roleDataFresh() and "stream" or "waiting"
+				end,
+				Color = function()
+					return roleDataFresh() and okColor or nil
+				end,
+			},
+			{
+				Key = "Map",
+				Value = function()
+					local map = findActiveMap()
+					return map and map.Name or "lobby"
+				end,
+			},
+			{
+				Key = "Banners",
+				Value = function()
+					local loaded = 0
+					for _ in pairs(BannerStats.Loaded) do
+						loaded += 1
+					end
+					return loaded .. "/" .. #TAB_KEYS
+				end,
+			},
+			{
+				Key = "Coins",
+				Value = function()
+					local coins, limit = myCoinState()
+					return coins and (tostring(coins) .. (limit and ("/" .. limit) or "")) or "—"
+				end,
+			},
+			{
+				Key = "Role",
+				Value = function()
+					local _, label = getRoleInfo(LocalPlayer)
+					return label and roleText(label) or "unknown"
+				end,
+				Color = function()
+					local class = getRoleInfo(LocalPlayer)
+					return ROLE_COLORS[class]
+				end,
+			},
+		},
+		Footer = function()
+			local map = findActiveMap()
+			return map and ("Lock acquired · " .. map.Name) or "Standing by · lobby"
+		end,
+	})
+end
+
+if HasV2 and Persist.Values.intro ~= false then
+	safe("Intro", playIntro)
+end
 safe("Status", updateStatus)
 safe("Map points", refreshPoints, true)
 fetchRoleData()

@@ -21,6 +21,7 @@
 		Window:SetBackground(imageId|nil [, opacity])          -- user picture behind the window content
 		Window:CreateWatermark({ Items, Align, Feed, OnMoved }) -> { SetItems, Push, SetFeed, SetAlign, SetPosition, SetVisible }
 		Window.Fps                                             -- last measured FPS
+		Window:PlayIntro({ Title, Subtitle, Lines, Footer, OnDone }) -> { Skip }   -- startup splash
 		Window:Minimize() / :Restore() / :ToggleVisibility() / :SelectTab(tab)
 		Window:Reset() / :Log(text) / :Destroy()
 
@@ -44,7 +45,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local Library = {}
-Library.Version = "2.2.0"
+Library.Version = "2.3.0"
 Library.LogToConsole = true
 
 -- Built-in UI strings; override (e.g. for localisation) before creating the window.
@@ -1124,8 +1125,436 @@ function Library:CreateWindow(title, options)
 		return wm
 	end
 
+	-- Intro: "calibration" splash played over the game, then hands over to the window --
+	-- introOptions = {
+	--   Title = "AERO // MM2", Subtitle = "…",
+	--   Lines = { { Key = "MAP", Value = "House2" | function() return … end, Color = Color3? }, … },
+	--   Footer = "…" | function, OnDone = function(skipped),
+	-- }
+	function window:PlayIntro(introOptions)
+		introOptions = introOptions or {}
+		local TextService = game:GetService("TextService")
+		local accent = window.Accent
+		local finished = false
+		local skipped = false
+		local connections = {}
+
+		window._introActive = true
+
+		local function resolve(value)
+			if type(value) == "function" then
+				local ok, result = pcall(value)
+				return ok and tostring(result) or "—"
+			end
+			return tostring(value or "")
+		end
+
+		-- hide the window and the top bar until the intro hands over
+		local wasMinimized = window.Minimized
+		main.Visible = false
+		bubble.Visible = false
+		local wmHolder = gui:FindFirstChild("Watermark")
+		local wmWasVisible = wmHolder and wmHolder.Visible
+		if wmHolder then
+			wmHolder.Visible = false
+		end
+
+		local overlay = create("CanvasGroup", {
+			Name = "Intro",
+			BackgroundColor3 = Color3.fromRGB(6, 8, 10),
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 50,
+			Parent = gui,
+		})
+		tween(overlay, { BackgroundTransparency = 0.1 }, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+
+		local sweep = create("Frame", {
+			Size = UDim2.new(1, 0, 0, 2),
+			Position = UDim2.fromScale(0, 0),
+			BackgroundColor3 = accent,
+			Parent = overlay,
+		})
+		tween(sweep, { Position = UDim2.fromScale(0, 1), BackgroundTransparency = 0.8 }, TweenInfo.new(0.9, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut))
+
+		-- scene: everything that collapses into the top bar at the end
+		local scene = create("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(1280, 720),
+			Parent = overlay,
+		})
+		local sceneScale = create("UIScale", { Parent = scene })
+		local function fitScene()
+			local vp = gui.AbsoluteSize
+			if vp.X > 0 and vp.Y > 0 then
+				sceneScale.Scale = math.clamp(math.min(vp.X / 1280, vp.Y / 720), 0.45, 1)
+			end
+		end
+		fitScene()
+		table.insert(connections, gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitScene))
+
+		-- crosshair hairlines across the whole screen
+		local hLine = create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0, 0, 0, 1),
+			BackgroundColor3 = accent,
+			BackgroundTransparency = 0.55,
+			Parent = overlay,
+		})
+		local vLine = create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0, 1, 0, 0),
+			BackgroundColor3 = accent,
+			BackgroundTransparency = 0.55,
+			Parent = overlay,
+		})
+		task.delay(0.45, function()
+			tween(hLine, { Size = UDim2.new(1, 0, 0, 1) }, TweenInfo.new(0.7, Enum.EasingStyle.Quint, Enum.EasingDirection.Out))
+			tween(vLine, { Size = UDim2.new(0, 1, 1, 0) }, TweenInfo.new(0.7, Enum.EasingStyle.Quint, Enum.EasingDirection.Out))
+		end)
+
+		-- reticle frame: four brackets fly in from the screen corners
+		local reticle = create("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0.5, -10),
+			Size = UDim2.fromOffset(220, 220),
+			Parent = scene,
+		})
+		for index, corner in ipairs({ { 0, 0, -520, -260 }, { 1, 0, 520, -260 }, { 0, 1, -520, 260 }, { 1, 1, 520, 260 } }) do
+			local ax, ay, fromX, fromY = corner[1], corner[2], corner[3], corner[4]
+			local holder = create("Frame", {
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(ax, ay),
+				Position = UDim2.new(ax, fromX, ay, fromY),
+				Size = UDim2.fromOffset(26, 26),
+				Parent = reticle,
+			})
+			create("Frame", {
+				AnchorPoint = Vector2.new(ax, ay),
+				Position = UDim2.fromScale(ax, ay),
+				Size = UDim2.fromOffset(26, 2),
+				BackgroundColor3 = accent,
+				Parent = holder,
+			})
+			create("Frame", {
+				AnchorPoint = Vector2.new(ax, ay),
+				Position = UDim2.fromScale(ax, ay),
+				Size = UDim2.fromOffset(2, 26),
+				BackgroundColor3 = accent,
+				Parent = holder,
+			})
+			task.delay(0.3 + (index - 1) * 0.06, function()
+				tween(holder, { Position = UDim2.fromScale(ax, ay) }, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+			end)
+		end
+
+		-- radar ring + rotating sweep
+		local ring = create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(160, 160),
+			BackgroundTransparency = 1,
+			Parent = reticle,
+		}, { create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local ringStroke = stroke(Color3.new(1, 1, 1), 1)
+		ringStroke.Parent = ring
+		local radar = create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(160, 160),
+			BackgroundColor3 = accent,
+			BackgroundTransparency = 1,
+			Parent = reticle,
+		}, { create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local radarGradient = create("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.48, 1),
+				NumberSequenceKeypoint.new(0.5, 0.55),
+				NumberSequenceKeypoint.new(0.62, 1),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+			Parent = radar,
+		})
+		task.delay(0.9, function()
+			tween(ringStroke, { Transparency = 0.9 }, TweenInfo.new(0.4))
+			tween(radar, { BackgroundTransparency = 0.2 }, TweenInfo.new(0.4))
+		end)
+		table.insert(connections, RunService.RenderStepped:Connect(function(dt)
+			radarGradient.Rotation = (radarGradient.Rotation + dt * 225) % 360
+		end))
+
+		-- diamond logo
+		local function spinIn(size, delay, filled)
+			local d = create("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(size, size),
+				Rotation = -135,
+				BackgroundColor3 = accent,
+				BackgroundTransparency = filled and 0 or 1,
+				Parent = reticle,
+			})
+			if not filled then
+				local s = stroke(accent, 0, 2)
+				s.Parent = d
+			end
+			local scale = create("UIScale", { Scale = 0, Parent = d })
+			task.delay(delay, function()
+				local info = TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+				tween(d, { Rotation = 45 }, info)
+				tween(scale, { Scale = 1 }, info)
+			end)
+		end
+		spinIn(80, 0.85, false)
+		spinIn(20, 1.15, true)
+
+		-- title: letter-by-letter glitch reveal
+		local title = tostring(introOptions.Title or window.Title)
+		local titleRow = create("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.5, 120),
+			Size = UDim2.new(1, 0, 0, 52),
+			Parent = scene,
+		}, {
+			create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 2),
+			}),
+		})
+		local jitter = { -14, 10, -6, 16, -10, 8, -16, 12, -8, 14, -12 }
+		for i = 1, #title do
+			local ch = string.sub(title, i, i)
+			local okSize, size = pcall(TextService.GetTextSize, TextService, ch == " " and "M" or ch, 44, T.FontHeading, Vector2.new(200, 200))
+			local width = okSize and size.X or 26
+			local cell = create("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(math.max(12, width), 52),
+				LayoutOrder = i,
+				Parent = titleRow,
+			})
+			local letter = label({
+				Size = UDim2.fromScale(1, 1),
+				Position = UDim2.fromOffset(0, jitter[(i - 1) % #jitter + 1]),
+				Font = T.FontHeading,
+				TextSize = 44,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextTransparency = 1,
+				Text = ch,
+				Parent = cell,
+			})
+			task.delay(1.45 + (i - 1) * 0.06, function()
+				if finished then
+					return
+				end
+				letter.TextTransparency = 0
+				tween(letter, { Position = UDim2.fromOffset(3, 0) }, TweenInfo.new(0.12, Enum.EasingStyle.Linear))
+				task.wait(0.14)
+				letter.Position = UDim2.fromOffset(-2, 0)
+				task.wait(0.06)
+				tween(letter, { Position = UDim2.fromOffset(0, 0) }, TweenInfo.new(0.08))
+			end)
+		end
+
+		local function fadeInLabel(props, delay)
+			props.TextTransparency = 1
+			props.Parent = props.Parent or scene
+			local l = label(props)
+			local target = l.Position
+			l.Position = target + UDim2.fromOffset(-12, 0)
+			task.delay(delay, function()
+				tween(l, { TextTransparency = 0, Position = target }, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+			end)
+			return l
+		end
+
+		fadeInLabel({
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.5, 178),
+			Size = UDim2.new(1, 0, 0, 16),
+			Font = T.FontMono,
+			TextSize = 11,
+			TextColor3 = T.TextDim,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Text = string.upper(tostring(introOptions.Subtitle or "")),
+		}, 2.2)
+
+		-- boot log (left)
+		fadeInLabel({
+			Position = UDim2.fromOffset(64, 250),
+			Size = UDim2.fromOffset(340, 14),
+			Font = T.FontMono,
+			TextSize = 10,
+			TextColor3 = T.TextFaint,
+			Text = "// BOOT SEQUENCE",
+		}, 1.5)
+		local hex = toHex(accent)
+		for i, line in ipairs(introOptions.Lines or {}) do
+			local key = string.upper(tostring(line.Key or ""))
+			local l = fadeInLabel({
+				Position = UDim2.fromOffset(64, 250 + i * 23),
+				Size = UDim2.fromOffset(360, 16),
+				Font = T.FontMono,
+				TextSize = 12,
+				RichText = true,
+				TextColor3 = T.TextDim,
+				Text = "",
+			}, 1.7 + (i - 1) * 0.22)
+			task.delay(1.7 + (i - 1) * 0.22, function()
+				local value = string.upper(resolve(line.Value))
+				local dots = string.rep("·", math.max(2, 30 - #key - #value))
+				local lineColor = line.Color
+				if type(lineColor) == "function" then
+					local okColor, result = pcall(lineColor)
+					lineColor = okColor and typeof(result) == "Color3" and result or nil
+				end
+				local color = lineColor and toHex(lineColor) or toHex(T.Text)
+				l.Text = string.format('<font color="%s">▸</font>  %s %s <font color="%s"><b>%s</b></font>', hex, escape(key), dots, color, escape(value))
+			end)
+		end
+
+		-- calibration (right)
+		fadeInLabel({
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -64, 0, 258),
+			Size = UDim2.fromOffset(300, 14),
+			Font = T.FontMono,
+			TextSize = 10,
+			TextColor3 = T.TextFaint,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "// CALIBRATION",
+		}, 1.5)
+		local percent = fadeInLabel({
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -64, 0, 276),
+			Size = UDim2.fromOffset(300, 44),
+			Font = T.FontHeading,
+			TextSize = 40,
+			TextColor3 = accent,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "000%",
+		}, 1.6)
+		local tickRow = create("Frame", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -64, 0, 328),
+			Size = UDim2.fromOffset(285, 16),
+			Parent = scene,
+		}, { list(3, Enum.FillDirection.Horizontal) })
+		for i = 1, 24 do
+			local tick = create("Frame", {
+				Size = UDim2.fromOffset(9, 16),
+				BackgroundColor3 = accent,
+				BackgroundTransparency = 0.88,
+				LayoutOrder = i,
+				Parent = tickRow,
+			})
+			task.delay(1.7 + (i - 1) * 0.065, function()
+				tick.BackgroundTransparency = 0
+			end)
+		end
+		local footer = fadeInLabel({
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -64, 0, 354),
+			Size = UDim2.fromOffset(300, 14),
+			Font = T.FontMono,
+			TextSize = 11,
+			TextColor3 = T.TextDim,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "",
+		}, 3.2)
+		task.delay(3.2, function()
+			footer.Text = string.upper(resolve(introOptions.Footer or "LOCK ACQUIRED"))
+		end)
+
+		local started = os.clock()
+		table.insert(connections, RunService.RenderStepped:Connect(function()
+			local t = os.clock() - started
+			local pct = math.clamp(math.floor((t - 1.7) / 1.55 * 100 + 0.5), 0, 100)
+			percent.Text = string.format("%03d%%", pct)
+		end))
+
+		-- skip: any click/tap on the intro or any key
+		local skipButton = button({ Size = UDim2.fromScale(1, 1), ZIndex = 10, Parent = overlay })
+		label({
+			AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.new(1, -24, 1, -18),
+			Size = UDim2.fromOffset(200, 14),
+			Font = T.FontMono,
+			TextSize = 10,
+			TextColor3 = T.TextFaint,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = "CLICK / ANY KEY TO SKIP",
+			ZIndex = 11,
+			Parent = overlay,
+		})
+
+		local function finish(fast)
+			if finished then
+				return
+			end
+			finished = true
+			skipped = fast == true
+			for _, c in ipairs(connections) do
+				c:Disconnect()
+			end
+			table.clear(connections)
+			if not fast then
+				tween(scene, { Position = UDim2.new(0.5, 0, 0, 30) }, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.In))
+				tween(sceneScale, { Scale = sceneScale.Scale * 0.18 }, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.In))
+				task.wait(0.4)
+			end
+			local fade = tween(overlay, { GroupTransparency = 1 }, TweenInfo.new(fast and 0.2 or 0.45))
+			fade.Completed:Wait()
+			overlay:Destroy()
+			window._introActive = false
+
+			-- hand over: window springs in, top bar drops in
+			if wasMinimized then
+				bubble.Visible = true
+			else
+				main.Visible = true
+				local target = effectiveScale()
+				mainScale.Scale = target * 0.92
+				tween(mainScale, { Scale = target }, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+			end
+			if wmHolder and wmWasVisible then
+				wmHolder.Visible = true
+			end
+			safeCall(introOptions.OnDone, skipped)
+		end
+
+		skipButton.MouseButton1Click:Connect(function()
+			task.spawn(finish, true)
+		end)
+		table.insert(connections, UserInputService.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				task.spawn(finish, true)
+			end
+		end))
+
+		task.delay(3.55, function()
+			finish(false)
+		end)
+
+		return {
+			Skip = function()
+				task.spawn(finish, true)
+			end,
+		}
+	end
+
+
 	window:_connect(UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and input.KeyCode == window.Keybind then
+		if not processed and input.KeyCode == window.Keybind and not window._introActive then
 			window:ToggleVisibility()
 		end
 	end))
